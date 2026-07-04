@@ -64,7 +64,7 @@ st.sidebar.markdown("Inserisci le credenziali del database PostgreSQL locale per
 db_host = st.sidebar.text_input("Host", value="ep-twilight-sky-asb5geuz.c-4.eu-central-1.aws.neon.tech")
 db_name = st.sidebar.text_input("Database Name", value="neondb")
 db_user = st.sidebar.text_input("User", value="neondb_owner")
-db_password = st.sidebar.text_input("Password", type="password", value="npg_p2cb0yBPwkfi")
+db_password = st.sidebar.text_input("Password", type="password", value="")
 db_port = st.sidebar.text_input("Port", value="5432")
 
 def get_connection():
