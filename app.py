@@ -61,10 +61,10 @@ st.sidebar.image("logo flow.jpeg", use_container_width=True)
 st.sidebar.title("Configurazione DB")
 st.sidebar.markdown("Inserisci le credenziali del database PostgreSQL locale per iniziare.")
 
-db_host = st.sidebar.text_input("Host", value="localhost")
-db_name = st.sidebar.text_input("Database Name", value="flowforest")
-db_user = st.sidebar.text_input("User", value="postgres")
-db_password = st.sidebar.text_input("Password", type="password", value="")
+db_host = st.sidebar.text_input("Host", value="ep-twilight-sky-asb5geuz.c-4.eu-central-1.aws.neon.tech")
+db_name = st.sidebar.text_input("Database Name", value="neondb")
+db_user = st.sidebar.text_input("User", value="neondb_owner")
+db_password = st.sidebar.text_input("Password", type="password", value="npg_p2cb0yBPwkfi")
 db_port = st.sidebar.text_input("Port", value="5432")
 
 def get_connection():
