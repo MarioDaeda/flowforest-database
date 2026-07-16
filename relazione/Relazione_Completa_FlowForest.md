@@ -57,7 +57,7 @@ Il carico di lavoro del database è guidato dalle seguenti operazioni principali
 # Progettazione Concettuale (Modello E-R)
 
 ## 1. ENTITÀ E ATTRIBUTI
-*(Gli identificatori principali / Chiavi Primarie sono <u>sottolineati</u>)*
+*(Gli identificatori principali sono <u>sottolineati</u>)*
 
 *   **Persona**: <u>codice_fiscale</u>, nome, cognome, data_nascita, telefono, mail, contatto_emergenza, note_allergia
 *   **Azienda Cliente**: <u>p_iva</u>, nome_azienda, pec_fatturazione, email
