@@ -1,22 +1,27 @@
 # Relazione Finale di Progetto: Basi di Dati
 **Progetto:** Database per FlowForest
 
-# Analisi dei Requisiti
+#Raccolta dei Requisiti
+## 1.1 intervista
+Si vuole realizzare una base di dati per l'azienda **FlowForest**, che gestisce un bosco e lo utilizza per:
 
-## 1.1 Testo delle specifiche (Dominio)
-L’obiettivo del progetto è realizzare un sistema di supporto gestionale e di analisi dei dati di un Laboratorio di Intelligenza Pratica situato in un contesto boschivo ("FlowForest").
+- organizzare eventi formativi, usando come strumento principale lo sviluppo dell'intelligenza pratica;
+- concedere il bosco o le sue aree come location per eventi ad aziende esterne, considerate partner.
 
-Ogni utente verrà registrato alla piattaforma in base al profilo:
-*   Cliente singolo (B2C)
-*   Azienda (B2B)
-*   Formatore/coach esterno ("Partner"), che utilizzerà il bosco come location.
+Ci si occupa esclusivamente dei dati operativi, escludendo gli aspetti fiscali e amministrativi.
 
-Un utente (o un'azienda) può partecipare a dei **Laboratori** nel bosco.
-Ogni laboratorio specifica le date, il numero di partecipanti, le aree del bosco utilizzate, il fatturato e il protocollo operativo applicato (es. lavoro manuale). Gli eventi interni saranno anche collegati alla gestione della scaletta e ai contenuti dei moduli. Per gli eventi partner invece verrà memorizzata anche una percentuale (fee) sui guadagni dalle vendite.
+Gli eventi vengono sempre svolti in gruppo: un gruppo può essere formato da un team aziendale oppure da singoli clienti che vengono riuniti insieme. Ogni evento ha una data di inizio e una di fine, un numero massimo di partecipanti e un costo del biglietto. Un cliente acquista un biglietto per partecipare a un evento; il biglietto registra la data di emissione e le eventuali allergie. Dopo l'evento, ogni partecipante può lasciare un feedback composto da un voto numerico, un commento e la data; ogni partecipante può lasciare al massimo un feedback per evento.
 
-Una volta concluso il laboratorio, il sistema permette ai partecipanti di descrivere tramite risposte ad un form la propria esperienza.
+Alcuni eventi sono organizzati da partner esterni che portano i propri clienti nel bosco. Ogni partner è identificato da partita IVA, nome, cognome e specializzazione. Il bosco è suddiviso in aree, ciascuna con nome, capienza e scopo; ogni evento utilizza una o più aree. All'interno di ogni area sono presenti strutture fisiche identificate da un codice e una funzione d'uso, appartenenti ciascuna a una sola area.
 
-Nel sistema verranno anche gestiti gli ordini, la disponibilità del materiale e il personale.
+Le attività organizzate e vendute direttamente da FlowForest sono chiamate **Laboratori**: percorsi strutturati con titolo, descrizione e protocollo operativo, composti da uno o più moduli didattici (nome e testo). FlowForest gestisce un inventario dei materiali, ciascuno con codice, nome, quantità disponibile e soglia minima di riordino. I materiali si dividono in attrezzature (riutilizzabili, con stato di usura e data dell'ultimo utilizzo) e consumabili (a esaurimento, con data di scadenza e allergeni). I consumabili vengono riforniti tramite ordini a fornitori esterni (partita IVA e ragione sociale), registrando data, importo totale e stato di consegna.
+
+Il personale è registrato con codice fiscale, IBAN, data di assunzione e allergie, e si suddivide in formatori interni (con certificazioni attive), operai e amministrativi (entrambi con mansione e livello salariale). Ogni laboratorio richiede l'assegnazione di uno o più membri del personale.
+
+L'azienda opera su due filoni:
+
+- la vendita di laboratori ai partecipanti tramite biglietti;
+- la concessione del bosco a partner che gestiscono direttamente i propri eventi.
 
 ## 1.2 Glossario e Risoluzione delle Ambiguità
 A seguito della lettura delle specifiche iniziali, i requisiti sono stati formalizzati e le terminologie unificate per evitare ridondanze.
@@ -29,6 +34,7 @@ A seguito della lettura delle specifiche iniziali, i requisiti sono stati formal
 | Laboratorio / Evento | **Evento** | Generalizzazione creata per accorpare sia i laboratori interni sia gli eventi dei partner. |
 | Materiale | **Attrezzatura** / **Consumabile** | Scomposto in due sottocategorie per poter gestire scadenze/allergeni (consumabili) o stati di usura (attrezzature). |
 | Personale | **Risorsa Umana** | Il termine generico è stato modellato in base ai ruoli effettivi (Formatore, Operaio, Amministrativo). |
+| Feedback per evento | **Feedback per biglietto** | Non è chiaro se il feedback sia associato al partecipante in relazione all'evento in generale oppure al singolo biglietto acquistato. Se un cliente partecipasse a due edizioni dello stesso laboratorio, avrebbe due feedback distinti oppure uno solo legato al tipo di laboratorio? Il feedback è associato al **biglietto**, non al partecipante né al tipo di laboratorio. Ogni feedback è quindi legato a una specifica partecipazione a una specifica edizione, consentendo all'azienda di contestualizzare i pareri ricevuti (in caso di problema tecnico, ignoto al cliente, è molto più probabile ricevere feedback negativi). |
 
 ## 1.3 Specifica delle Operazioni
 Il carico di lavoro del database è guidato dalle seguenti operazioni principali richieste dai due profili di utenza previsti (Partecipanti e Gestori).

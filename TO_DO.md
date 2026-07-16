@@ -21,3 +21,4 @@
     GROUP BY P.codice_fiscale
     HAVING COUNT(B.cod_seriale) >= 3;
     "
+- [] arrichhire da overleaf. a md
