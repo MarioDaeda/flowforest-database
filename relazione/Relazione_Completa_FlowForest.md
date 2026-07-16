@@ -1,6 +1,66 @@
 # Relazione Finale di Progetto: Basi di Dati
 **Progetto:** Database per FlowForest
 
+## Indice
+
+**Raccolta dei Requisiti**
+- 1.1 Intervista
+- 1.2 Glossario e Risoluzione delle Ambiguità
+- 1.3 Definizione delle specifiche in linguaggio naturale ed estrazione dei concetti principali
+- 1.4 Specifica delle Operazioni
+  - Operazioni per i Partecipanti (Clienti)
+  - Operazioni per i Gestori del Bosco (Amministratori)
+
+**Progettazione Concettuale (Modello E-R)**
+- *Schema Scheletro* ⚠️ *(da aggiungere — assente)*
+- 1. Entità e Attributi
+- 2. Gerarchie (Specializzazioni IS-A)
+- 3. Associazioni e Cardinalità (Min, Max)
+- *Raffinamenti proposti* ⚠️ *(da aggiungere — assente come sezione esplicita)*
+- *Schema Concettuale Finale (immagine)* ⚠️ *(da aggiungere — immagine mancante)*
+
+**Progettazione Logica**
+- 1. Stima dei Volumi e delle Frequenze
+- *Descrizione delle operazioni principali e stima della loro frequenza* ⚠️ *(da aggiungere — assente)*
+- *Schemi di navigazione e tabelle degli accessi* ⚠️ *(da aggiungere — assente)*
+- 2. Analisi delle Ridondanze
+- 3. Raffinamento dello Schema ed eliminazione Gerarchie
+- 4. *Traduzione di Entità e Associazioni in Relazioni* ⚠️ *(da aggiungere — assente come processo esplicito)*
+- 5. Schema Relazionale Finale
+
+**Il Progetto Fisico**
+- 1. Indicizzazione degli attributi
+  - 1.1 Indici Primari (Primary Keys)
+  - 1.2 Indici Univoci (Alternate Keys)
+  - 1.3 Indici Secondari Sulle Chiavi Esterne (Foreign Keys)
+- 2. Ordinamento su attributi
+
+**Implementazione nel DBMS (Query SQL)**
+- *Costruzione delle tabelle in linguaggio SQL (CREATE TABLE)* ⚠️ *(da aggiungere — assente)*
+- 1. Operazioni per i Partecipanti (Clienti)
+  - OP.P1: Inserimento Feedback
+  - OP.P2: Ricerca Biglietto
+  - OP.P3: Ricerca Eventi Futuri
+  - OP.P4: Ricerca Attrezzatura Necessaria
+  - OP.P5: Sistema Inviti Gratuiti
+- 2. Operazioni per i Gestori del Bosco
+  - OP.G1: Registrazione Nuovi Clienti
+  - OP.G2: Gestione Ordini al Fornitore
+  - OP.G3: Gestione Inventario
+  - OP.G4: Programmazione di un Laboratorio
+  - OP.G5: Storico Laboratori Effettuati
+  - OP.G6: Analisi Spesa Media Annua dei Clienti Privati
+  - OP.G7: Classifica Ricavi dai Partner
+  - OP.G8: Calcolo del Fatturato Lordo e Netto per Evento
+
+**Progettazione dell'Applicazione**
+- 1. Architettura dell'Applicazione e Scelte Tecnologiche
+- 2. Interfaccia Utente e Funzionalità
+  - 2.1 Tab "Pannello Operativo"
+  - 2.2 Tab "Registri & Anagrafiche"
+  - 2.3 Tab "Recensioni & Feedback" (Dashboard Analitica)
+  - *Screenshot dell'interfaccia utente* ⚠️ *(obbligatori secondo la traccia — verificare se già inclusi)*
+
 #Raccolta dei Requisiti
 ## 1.1 intervista
 Si vuole realizzare una base di dati per l'azienda **FlowForest**, che gestisce un bosco e lo utilizza per:

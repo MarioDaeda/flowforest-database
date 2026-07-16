@@ -1,10 +1,16 @@
+# RELAZIONE
 - [ ] inserire foto schemi
     - [ ] concettuale
-    - [ ] conettuale evoluzioni
+    - [ ] concettuale evoluzioni
+- [ ] schema scheletro(solo entità e pochi dettagli) (fase distinta, prima dei raffinamenti) — verificare se coincide con "evoluzioni"
 
-- [ ]  aggiungere l'indice
+- [ ] dire se raffinamento gerarchia è verso l'alto/basso/tabelle distinte, per ogni gerarchia
 
-- [] dire se è verso l'alto o basso per ogni caso "Raffinamento dello Schema ed eliminazione Gerarchie"
+- [ ] gli schemi di navigazione e le tabelle degli accessi
+- [ ] traduzione sistematica di entità/associazioni in relazioni (non solo lo schema finale)
+- [ ] (opzionale) CREATE TABLE in SQL prima delle query DML
+
+# CODICE
 
 - [] inserire come codice la query  per il conteggio delle 3 persone. SELECT COUNT(B.cod_seriale) AS numero_partecipazioni 
     "
@@ -21,4 +27,3 @@
     GROUP BY P.codice_fiscale
     HAVING COUNT(B.cod_seriale) >= 3;
     "
-- [] arrichhire da overleaf. a md
