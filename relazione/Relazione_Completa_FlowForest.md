@@ -35,28 +35,52 @@ A seguito della lettura delle specifiche iniziali, i requisiti sono stati formal
 | Materiale | **Attrezzatura** / **Consumabile** | Scomposto in due sottocategorie per poter gestire scadenze/allergeni (consumabili) o stati di usura (attrezzature). |
 | Personale | **Risorsa Umana** | Il termine generico è stato modellato in base ai ruoli effettivi (Formatore, Operaio, Amministrativo). |
 | Feedback per evento | **Feedback per biglietto** | Non è chiaro se il feedback sia associato al partecipante in relazione all'evento in generale oppure al singolo biglietto acquistato. Se un cliente partecipasse a due edizioni dello stesso laboratorio, avrebbe due feedback distinti oppure uno solo legato al tipo di laboratorio? Il feedback è associato al **biglietto**, non al partecipante né al tipo di laboratorio. Ogni feedback è quindi legato a una specifica partecipazione a una specifica edizione, consentendo all'azienda di contestualizzare i pareri ricevuti (in caso di problema tecnico, ignoto al cliente, è molto più probabile ricevere feedback negativi). |
+| Clienti dei Partner | | Il testo afferma che i partner "portano i propri clienti nel bosco", ma non specifica se questi clienti vengano registrati nel sistema o rimangano anonimi. I clienti portati dal partner per gli eventi partner **non vengono registrati** nel sistema. |
 
-## 1.3 Specifica delle Operazioni
+## 1.3 Definizione delle specifiche in linguaggio naturale ed estrazione dei concetti principali
+
+Si vuole realizzare lo schema informativo dell'azienda **FlowForest**: un'azienda che gestisce un bosco e lo utilizza per:
+
+- organizzare eventi formativi, avendo come strumento principale lo sviluppo dell'intelligenza pratica;
+- concedere il bosco o le sue aree come location per eventi ad aziende esterne, considerate **Partner**.
+
+Gli **Eventi** vengono sempre svolti in **Gruppo**: un gruppo viene costituito dall'azienda e si forma progressivamente man mano che i partecipanti acquistano il biglietto, nel rispetto di un numero minimo e massimo stabiliti dall'evento. Un gruppo può essere composto da un team aziendale oppure da un insieme di clienti singoli riuniti insieme. Ogni Evento ha una data di inizio e una di fine, un numero massimo di partecipanti e un costo del biglietto. Un cliente acquista un **Biglietto** per partecipare a un evento; il biglietto registra la data di emissione e le eventuali richieste allergie relative a quella specifica partecipazione. Dopo l'evento, ogni partecipante può compilare un **Feedback** composto da un voto numerico, un commento testuale e la data di compilazione; ogni biglietto può generare al massimo un feedback. Il feedback è associato al biglietto, non al partecipante né al tipo di laboratorio, in modo da essere legato a quella specifica edizione e consentire all'azienda di contestualizzare i pareri ricevuti.
+
+Alcuni eventi sono organizzati da **Partner** esterni: aziende identificate da partita IVA, nome e specializzazione. La stessa azienda può comparire nel sistema in due vesti distinte — come Partner, quando organizza un proprio evento nel bosco, e come cliente, quando iscrive i propri dipendenti a un Laboratorio FlowForest — e viene memorizzata separatamente nelle due situazioni in ragione del diverso ruolo ricoperto. I partecipanti portati da un partner vengono anch'essi registrati nel sistema tramite biglietto; l'informazione che il partecipante è dipendente o cliente dell'azienda organizzatrice viene riportata sul biglietto stesso.
+
+Il bosco è suddiviso in **Aree**, ciascuna con nome, capienza e scopo; ogni evento utilizza una o più aree. All'interno di ogni area sono presenti **Strutture** fisiche (capanne, pergolati, ecc.), identificate da un codice e da una funzione d'uso, ciascuna appartenente a una sola area.
+
+Gli eventi organizzati e venduti da FlowForest sono chiamati **Laboratori**: percorsi didattici strutturati con titolo, descrizione e protocollo operativo, composti da uno o più **Moduli Didattici** (nome e testo).
+
+FlowForest gestisce un inventario dei **Materiali**, ciascuno con codice, nome, quantità disponibile e soglia minima di riordino. I materiali si suddividono in **Attrezzature** (beni riutilizzabili, con stato di usura e data dell'ultimo utilizzo) e **Consumabili** (beni a esaurimento, con data di scadenza e allergeni presenti). I consumabili vengono approvvigionati tramite **Ordini** a **Fornitori** esterni (partita IVA e ragione sociale). Ogni ordine registra data, importo totale e stato di consegna; sono inoltre tracciate le singole **Righe d'Ordine**, ciascuna relativa a un materiale specifico con quantità e prezzo unitario, in modo da poter riconciliare l'ordine con l'aggiornamento delle giacenze in magazzino.
+
+Il personale interno è registrato come **Risorsa Umana** (codice fiscale, IBAN, data di assunzione, note allergie) e si suddivide in **Formatori** interni (con certificazioni attive), **Operai** e **Amministrativi** (entrambi con mansione e livello salariale). La suddivisione è una gerarchia di specializzazione parziale e non esclusiva: una Risorsa Umana può ricoprire contemporaneamente più ruoli, con gli attributi specifici di ciascuno applicati solo alla specializzazione corrispondente. Ogni laboratorio richiede l'assegnazione di una o più risorse umane.
+
+L'azienda opera su due *business unit*:
+
+- l'organizzazione di eventi formativi, i cui clienti sono i partecipanti e il cui guadagno deriva dalla vendita dei biglietti;
+- la concessione del bosco come location, il cui guadagno deriva dall'azienda partner che gestisce l'evento.
+
+## 1.4 Specifica delle Operazioni
 Il carico di lavoro del database è guidato dalle seguenti operazioni principali richieste dai due profili di utenza previsti (Partecipanti e Gestori).
 
 ### Operazioni per i Partecipanti (Clienti)
 *   **(OP.P1) Inserimento Feedback:** Compilare dei form per la soddisfazione a fine laboratorio.
 *   **(OP.P2) Ricerca Biglietto:** Ricercare il proprio biglietto e i dettagli dell'evento.
 *   **(OP.P3) Eventi Futuri:** Esplorare gli eventi futuri disponibili in calendario.
-*   **(OP.P4) Attrezzatura Necessaria:** Visualizzare l’attrezzatura richiesta per gli eventi a cui si è iscritti.
+*   **(OP.P4) Attrezzatura Necessaria:** Visualizzare l'attrezzatura richiesta per gli eventi a cui si è iscritti.
 *   **(OP.P5) Sistema Inviti:** Concedere ai partecipanti, dopo 3 partecipazioni, di invitare gratuitamente dei conoscenti.
 
 ### Operazioni per i Gestori del Bosco (Amministratori)
 *   **(OP.G1) Registrazione Cliente:** Registrare un nuovo utente privato o azienda partner.
 *   **(OP.G2) Gestione Ordini:** Registrare nuovi ordini ai fornitori, con controllo degli allergeni per i consumabili.
-*   **(OP.G3) Gestione Inventario:** Inserire o eliminare materiale dall’inventario del magazzino.
+*   **(OP.G3) Gestione Inventario:** Inserire o eliminare materiale dall'inventario del magazzino.
 *   **(OP.G4) Programmazione Eventi:** Creare e prenotare un nuovo Laboratorio (interno o esterno) indicando partecipanti, costi e tipo.
 *   **(OP.G5) Modifica Laboratori:** Aggiornare tutti gli elementi testuali e didattici riguardanti i laboratori.
 *   **(OP.G6) Storico Eventi:** Visualizzare lo storico e l'esito dei laboratori passati.
 *   **(OP.G7) Analisi Spesa Clienti:** Visualizzare la spesa media annua di ogni cliente registrato.
 *   **(OP.G8) Classifica Partner:** Scoprire il formatore esterno che ha generato il maggior volume di ricavi tramite fee nell'anno.
 *   **(OP.G9) Fatturato:** Visualizzare il fatturato complessivo generato da ogni singolo evento.
-
 
 ---
 
