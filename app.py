@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import psycopg2
 import datetime
+import json
+import os
 
 # Configurazione della Pagina
 st.set_page_config(
@@ -50,59 +52,149 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Inizializzazione session state per la connessione al database
+# Inizializzazione session state
 if 'db_conn_info' not in st.session_state:
     st.session_state['db_conn_info'] = None
 if 'db_connected' not in st.session_state:
     st.session_state['db_connected'] = False
+if 'user_role' not in st.session_state:
+    st.session_state['user_role'] = None
+if 'authenticated' not in st.session_state:
+    st.session_state['authenticated'] = False
+if 'user_email' not in st.session_state:
+    st.session_state['user_email'] = None
 
-# Sidebar per la connessione al DB (Indispensabile per rendere portabile il progetto)
-st.sidebar.image("logo flow.jpeg", use_container_width=True)
-st.sidebar.title("Configurazione DB")
-st.sidebar.markdown("Inserisci le credenziali del database PostgreSQL locale per iniziare.")
-
-db_host = st.sidebar.text_input("Host", value="ep-twilight-sky-asb5geuz.c-4.eu-central-1.aws.neon.tech")
-db_name = st.sidebar.text_input("Database Name", value="neondb")
-db_user = st.sidebar.text_input("User", value="neondb_owner")
-db_password = st.sidebar.text_input("Password", type="password", value="")
-db_port = st.sidebar.text_input("Port", value="5432")
-
-def get_connection():
+# Carica credenziali da file
+def load_credentials():
     try:
-        conn = psycopg2.connect(
-            host=db_host,
-            database=db_name,
-            user=db_user,
-            password=db_password,
-            port=db_port
-        )
-        return conn
-    except Exception as e:
-        st.sidebar.error(f"Errore di connessione: {e}")
+        with open('credentials.json', 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        st.error("File credentials.json non trovato!")
         return None
 
-if st.sidebar.button("Connetti al Database"):
-    conn = get_connection()
-    if conn:
-        st.session_state['db_conn_info'] = {
-            'host': db_host,
-            'database': db_name,
-            'user': db_user,
-            'password': db_password,
-            'port': db_port
-        }
-        st.session_state['db_connected'] = True
-        st.sidebar.success("Connesso con successo! 🎉")
-        conn.close()
+CREDENTIALS_DATA = load_credentials()
+
+# Sidebar per l'autenticazione utente
+st.sidebar.image("logo_flow.jpeg", use_container_width=True)
+st.sidebar.title("🔐 Login Portale")
+
+# Mostra form di login se non autenticato
+if not st.session_state['authenticated']:
+    login_tipo = st.sidebar.radio("Accedi come:", ["Cliente", "Staff (Admin/Server)"])
+
+    if login_tipo == "Cliente":
+        st.sidebar.markdown("Accedi con la mail usata in fase di registrazione.")
+        email_input = st.sidebar.text_input("Email:", placeholder="mario.rossi@email.com")
+        password_input = st.sidebar.text_input("Password:", type="password", placeholder="Inserisci password")
+
+        if st.sidebar.button("Accedi"):
+            client_users = CREDENTIALS_DATA.get('client_users', {}) if CREDENTIALS_DATA else {}
+            if email_input in client_users:
+                if client_users[email_input]["password"] == password_input:
+                    st.session_state['authenticated'] = True
+                    st.session_state['user_role'] = 'cliente'
+                    st.session_state['user_email'] = email_input
+                    st.sidebar.success("✅ Accesso eseguito!")
+                    st.rerun()
+                else:
+                    st.sidebar.error("❌ Password errata!")
+            else:
+                st.sidebar.error("❌ Email non trovata!")
+    else:
+        st.sidebar.markdown("Accedi al portale con le tue credenziali di staff.")
+        username_input = st.sidebar.text_input("Username:", placeholder="Inserisci username")
+        password_input = st.sidebar.text_input("Password:", type="password", placeholder="Inserisci password")
+
+        if st.sidebar.button("Accedi"):
+            staff_users = CREDENTIALS_DATA.get('staff_users', {}) if CREDENTIALS_DATA else {}
+            if username_input in staff_users:
+                user_cred = staff_users[username_input]
+                if user_cred["password"] == password_input:
+                    st.session_state['authenticated'] = True
+                    st.session_state['user_role'] = user_cred["role"]
+                    st.sidebar.success("✅ Accesso eseguito!")
+                    st.rerun()
+                else:
+                    st.sidebar.error("❌ Password errata!")
+            else:
+                st.sidebar.error("❌ Username non trovato!")
+
+if st.session_state['authenticated']:
+    st.sidebar.success(f"✅ Autenticato come: **{st.session_state['user_role'].upper()}**")
+
+    def get_connection(conn_info):
+        try:
+            return psycopg2.connect(**conn_info)
+        except Exception as e:
+            st.sidebar.error(f"Errore di connessione: {e}")
+            return None
+
+    # Cliente e Admin si connettono in automatico con le credenziali predefinite,
+    # senza vedere/poter modificare la configurazione del DB
+    if st.session_state['user_role'] in ['cliente', 'admin']:
+        if not st.session_state['db_connected']:
+            db_defaults = CREDENTIALS_DATA.get('db', {}) if CREDENTIALS_DATA else {}
+            conn_info = {
+                'host': db_defaults.get('host'),
+                'database': db_defaults.get('database'),
+                'user': db_defaults.get('user'),
+                'password': db_defaults.get('password'),
+                'port': db_defaults.get('port')
+            }
+            conn = get_connection(conn_info)
+            if conn:
+                st.session_state['db_conn_info'] = conn_info
+                st.session_state['db_connected'] = True
+                conn.close()
+    else:
+        # Solo server vede il form di configurazione DB
+        st.sidebar.markdown("---")
+        st.sidebar.title("Configurazione DB")
+        st.sidebar.markdown("Inserisci le credenziali del database PostgreSQL.")
+
+        db_host = st.sidebar.text_input("Host", value="ep-twilight-sky-asb5geuz.c-4.eu-central-1.aws.neon.tech")
+        db_name = st.sidebar.text_input("Database Name", value="neondb")
+        db_user = st.sidebar.text_input("User", value="neondb_owner")
+        db_password = st.sidebar.text_input("Password", type="password", value="")
+        db_port = st.sidebar.text_input("Port", value="5432")
+
+        if st.sidebar.button("Connetti al Database"):
+            conn_info = {
+                'host': db_host,
+                'database': db_name,
+                'user': db_user,
+                'password': db_password,
+                'port': db_port
+            }
+            conn = get_connection(conn_info)
+            if conn:
+                st.session_state['db_conn_info'] = conn_info
+                st.session_state['db_connected'] = True
+                st.sidebar.success("Connesso con successo! 🎉")
+                conn.close()
+
+    # Button logout
+    st.sidebar.markdown("---")
+    if st.sidebar.button("🚪 Logout"):
+        st.session_state['authenticated'] = False
+        st.session_state['user_role'] = None
+        st.session_state['user_email'] = None
+        st.session_state['db_connected'] = False
+        st.session_state['db_conn_info'] = None
+        st.rerun()
 
 # Navbar principale per le aree applicative
 st.title("🌳 FlowForest Database Management Portal")
 st.markdown("---")
 
-if not st.session_state['db_connected']:
+if not st.session_state['authenticated']:
+    st.warning("🔒 Per favore, accedi con le tue credenziali nella sidebar per continuare.")
+    st.image("panorama flow.jpeg", use_container_width=True, caption="Il bosco di FlowForest")
+elif not st.session_state['db_connected']:
     st.info("👈 Per favore, configura le credenziali di PostgreSQL nella sidebar a sinistra e fai clic su **Connetti al Database** per abilitare il portale.")
     st.image("panorama flow.jpeg", use_container_width=True, caption="Il bosco di FlowForest")
-else:
+elif st.session_state['authenticated'] and st.session_state['db_connected']:
     # Definizione delle funzioni di utilità per le query
     def run_query(query, params=None):
         conn = psycopg2.connect(**st.session_state['db_conn_info'])
@@ -124,11 +216,37 @@ else:
             cur.close()
             conn.close()
 
-    # Selezione dell'Area Applicativa
-    app_mode = st.selectbox(
-        "Seleziona l'Area Applicativa:",
-        ["Area Partecipanti (B2C)", "Area Gestione Bosco (Admin & Formatori)"]
-    )
+    def run_transaction(statements):
+        """Esegue una lista di (query, params) in un'unica transazione atomica.
+        In caso di errore esegue il rollback e non lascia dati parziali.
+        Restituisce True se il commit va a buon fine, False altrimenti."""
+        conn = psycopg2.connect(**st.session_state['db_conn_info'])
+        cur = conn.cursor()
+        try:
+            for query, params in statements:
+                cur.execute(query, params)
+            conn.commit()
+            return True
+        except Exception as e:
+            conn.rollback()
+            st.error(f"Errore durante la transazione (nessuna modifica applicata): {e}")
+            return False
+        finally:
+            cur.close()
+            conn.close()
+
+    # Selezione dell'Area Applicativa in base al ruolo
+    if st.session_state['user_role'] == 'cliente':
+        app_mode = "Area Partecipanti (B2C)"
+        st.info("👤 Accesso limitato - Visualizzi solo l'Area Partecipanti")
+    elif st.session_state['user_role'] == 'admin':
+        app_mode = "Area Gestione Bosco (Admin & Formatori)"
+        st.info("⚙️ Accesso amministratore - Area Gestione Bosco")
+    else:
+        app_mode = st.selectbox(
+            "Seleziona l'Area Applicativa:",
+            ["Area Partecipanti (B2C)", "Area Gestione Bosco (Admin & Formatori)"]
+        )
 
     st.markdown("---")
 
@@ -141,14 +259,59 @@ else:
         tab1, tab2, tab3 = st.tabs(["🎫 Ricerca Biglietto & Attrezzatura", "📅 Eventi Disponibili", "✍️ Compila Feedback"])
         
         with tab1:
-            st.subheader("Cerca il tuo Biglietto")
+            st.subheader("I tuoi Biglietti")
+
+            # Se l'utente è un cliente autenticato via email, mostra automaticamente
+            # tutti i biglietti collegati alla sua anagrafica (PERSONA.mail)
+            if st.session_state.get('user_email'):
+                q_my_tickets = """
+                SELECT B.cod_seriale, B.data_emissione, B.prezzo_pagato, B.richiesta_allergie,
+                       E.data_inizio, E.data_fine,
+                       COALESCE(L.titolo, EP.titolo) AS nome_evento,
+                       E.nome_area
+                FROM BIGLIETTO_PERSONA B
+                JOIN PERSONA P ON B.codice_fiscale = P.codice_fiscale
+                JOIN EVENTO E ON B.id_evento = E.id_evento
+                LEFT JOIN LABORATORIO L ON E.id_evento = L.id_evento
+                LEFT JOIN EVENTO_PARTNER EP ON E.id_evento = EP.id_evento
+                WHERE P.mail = %s
+                ORDER BY E.data_inizio DESC;
+                """
+                df_my_tickets = run_query(q_my_tickets, (st.session_state['user_email'],))
+
+                if df_my_tickets is not None and not df_my_tickets.empty:
+                    st.dataframe(df_my_tickets, use_container_width=True)
+
+                    st.subheader("🎒 Attrezzatura Richiesta per i tuoi Eventi:")
+                    q_my_equip = """
+                    SELECT DISTINCT COALESCE(L.titolo, EP.titolo) AS nome_evento, M.nome_materiale, IM.quantita_impiegata
+                    FROM BIGLIETTO_PERSONA B
+                    JOIN PERSONA P ON B.codice_fiscale = P.codice_fiscale
+                    JOIN EVENTO E ON B.id_evento = E.id_evento
+                    LEFT JOIN LABORATORIO L ON E.id_evento = L.id_evento
+                    LEFT JOIN EVENTO_PARTNER EP ON E.id_evento = EP.id_evento
+                    JOIN IMPIEGO_MATERIALE IM ON B.id_evento = IM.id_evento
+                    JOIN MATERIALE M ON IM.codice_articolo = M.codice_articolo
+                    WHERE P.mail = %s;
+                    """
+                    df_my_equip = run_query(q_my_equip, (st.session_state['user_email'],))
+                    if df_my_equip is not None and not df_my_equip.empty:
+                        st.dataframe(df_my_equip, use_container_width=True)
+                    else:
+                        st.info("Nessuna attrezzatura particolare richiesta per i tuoi eventi.")
+                else:
+                    st.info("Non risulta ancora nessun biglietto associato alla tua mail.")
+
+                st.markdown("---")
+
+            st.subheader("Cerca un Biglietto per Codice Seriale")
             ticket_serial = st.text_input("Inserisci il Codice Seriale del Biglietto:", placeholder="Esempio: SERIALE_PROVA_123")
-            
+
             if ticket_serial:
                 # 1. Ricerca Biglietto
                 q_ticket = """
                 SELECT B.cod_seriale, B.data_emissione, B.prezzo_pagato, B.richiesta_allergie,
-                       E.data_inizio, E.data_fine, 
+                       E.data_inizio, E.data_fine,
                        COALESCE(L.titolo, EP.titolo) AS nome_evento,
                        E.nome_area
                 FROM BIGLIETTO_PERSONA B
@@ -158,11 +321,11 @@ else:
                 WHERE B.cod_seriale = %s;
                 """
                 df_ticket = run_query(q_ticket, (ticket_serial,))
-                
+
                 if df_ticket is not None and not df_ticket.empty:
                     st.success("Biglietto Trovato!")
                     st.dataframe(df_ticket)
-                    
+
                     # 2. Ricerca Attrezzatura Necessaria
                     st.subheader("🎒 Attrezzatura Richiesta per l'Evento:")
                     q_equip = """
@@ -224,6 +387,11 @@ else:
     # AREA GESTIONE BOSCO (ADMIN)
     # =========================================================================
     elif app_mode == "Area Gestione Bosco (Admin & Formatori)":
+        # Controllo accesso: solo admin e server possono accedere
+        if st.session_state['user_role'] not in ['admin', 'server']:
+            st.error("🔐 Accesso negato! Solo admin e server possono accedere a questa area.")
+            st.stop()
+
         st.header("⚙️ Portale Amministratore Bosco")
         
         tab_admin1, tab_admin2, tab_admin3, tab_admin4, tab_admin5, tab_admin6, tab_admin7 = st.tabs([
@@ -300,11 +468,42 @@ else:
                 mat_nome = st.text_input("Nome:", key="inv_materiale_nome")
                 mat_q = st.number_input("Quantità Iniziale:", min_value=0, value=0)
                 mat_soglia = st.number_input("Soglia Riordino:", min_value=0, value=2)
-                
+
+                # La gerarchia MATERIALE è Totale ed Esclusiva: ogni materiale
+                # è o Attrezzatura (riutilizzabile) o Consumabile (a esaurimento).
+                mat_tipo = st.radio("Tipo di Materiale:", ["Attrezzatura", "Consumabile"], key="inv_materiale_tipo")
+
+                if mat_tipo == "Attrezzatura":
+                    attr_stato = st.text_input("Stato di Usura:", value="Nuovo", key="inv_attr_stato")
+                    attr_data = st.date_input("Data Ultimo Utilizzo:", value=datetime.date.today(), key="inv_attr_data")
+                else:
+                    cons_scadenza = st.date_input(
+                        "Data di Scadenza:",
+                        value=datetime.date.today() + datetime.timedelta(days=365),
+                        key="inv_cons_scadenza"
+                    )
+                    cons_allergeni = st.text_input("Allergeni Presenti:", placeholder="Es. glutine, lattosio", key="inv_cons_allergeni")
+
                 if st.button("Inserisci Materiale"):
-                    q_mat = "INSERT INTO MATERIALE (codice_articolo, nome_materiale, quantita_inventario, soglia_minima_riordino) VALUES (%s, %s, %s, %s);"
-                    run_query(q_mat, (mat_cod, mat_nome, mat_q, mat_soglia))
-                    st.success("Materiale inserito!")
+                    if not mat_cod or not mat_nome:
+                        st.error("Codice articolo e nome sono obbligatori.")
+                    else:
+                        statements = [(
+                            "INSERT INTO MATERIALE (codice_articolo, nome_materiale, quantita_inventario, soglia_minima_riordino) VALUES (%s, %s, %s, %s);",
+                            (mat_cod, mat_nome, mat_q, mat_soglia)
+                        )]
+                        if mat_tipo == "Attrezzatura":
+                            statements.append((
+                                "INSERT INTO ATTREZZATURA (codice_articolo, stato_usura, data_ultimo_utilizzo) VALUES (%s, %s, %s);",
+                                (mat_cod, attr_stato, attr_data)
+                            ))
+                        else:
+                            statements.append((
+                                "INSERT INTO CONSUMABILE (codice_articolo, data_scadenza, allergeni_presenti) VALUES (%s, %s, %s);",
+                                (mat_cod, cons_scadenza, cons_allergeni)
+                            ))
+                        if run_transaction(statements):
+                            st.success(f"Materiale inserito come {mat_tipo}!")
             
             with inv_col2:
                 st.write("**Elimina Materiale**")
