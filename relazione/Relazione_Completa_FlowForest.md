@@ -575,6 +575,13 @@ Questa vista rappresenta l'incarnazione grafica dei comandi standard `SELECT * F
 ### 2.3 Tab "Recensioni & Feedback" (Dashboard Analitica)
 In quest'area vengono esposte le **Analytics** del progetto. Vengono eseguite le query SQL complesse (contenenti join multipli e funzioni aggregate) necessarie a calcolare in tempo reale il fatturato lordo/netto, ad individuare il partner che ha generato i ricavi più alti o ad esporre la spesa media annua pro capite.
 
+## 3. Note sulle Scelte Implementative e Requisiti Semplificati
+
+In fase di realizzazione del prototipo applicativo si è scelto, per contenere la complessità dell'interfaccia e concentrarsi sulle operazioni a maggior valore per l'utente finale, di **non implementare** alcune funzionalità pur previste in fase di analisi. Tali scostamenti sono qui documentati per trasparenza:
+
+*   **OP.P5 — Sistema Inviti Gratuiti:** la logica che consente a un partecipante con almeno 3 partecipazioni di invitare gratuitamente dei conoscenti non è stata esposta nell'interfaccia. La relativa interrogazione di verifica resta comunque documentata nel capitolo "Implementazione nel DBMS" come possibile estensione futura.
+*   **Assegnazione del Personale ai Laboratori:** il requisito secondo cui *"ogni laboratorio richiede l'assegnazione di una o più risorse umane"* non è stato tradotto in una relazione dedicata nello schema logico/fisico (non esiste una tabella di associazione `RISORSA_UMANA`↔`EVENTO`), e di conseguenza non è gestito dall'applicazione. La sua introduzione comporterebbe l'aggiunta di un'entità associativa molti-a-molti e del relativo form di gestione, ed è individuata come naturale evoluzione del sistema.
+
 ---
 
 > *[NOTA PER GLI STUDENTI: FATE 3 O 4 SCREENSHOT DELL'APP E INCOLLATELI QUI SOTTO]*
