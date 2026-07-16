@@ -519,6 +519,78 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
             if df_inv is not None:
                 st.dataframe(df_inv, use_container_width=True)
 
+            # =================================================================
+            # OP.G2 - Gestione Ordini al Fornitore (ORDINE + DETTAGLIO_ORDINE)
+            # =================================================================
+            st.write("---")
+            st.subheader("📥 Registra un Ordine al Fornitore")
+            st.write("Crea un ordine di rifornimento consumabili, con controllo degli allergeni.")
+
+            # Elenco fornitori per la selezione
+            df_forn = run_query("SELECT p_iva, ragione_sociale FROM FORNITORE ORDER BY ragione_sociale;")
+            # Elenco consumabili ordinabili (solo materiali che sono consumabili)
+            q_consumabili = """
+            SELECT C.codice_articolo, M.nome_materiale, C.allergeni_presenti
+            FROM CONSUMABILE C
+            JOIN MATERIALE M ON C.codice_articolo = M.codice_articolo
+            ORDER BY M.nome_materiale;
+            """
+            df_cons = run_query(q_consumabili)
+
+            if df_forn is None or df_forn.empty:
+                st.info("Nessun fornitore presente. Registra prima un fornitore per poter creare ordini.")
+            elif df_cons is None or df_cons.empty:
+                st.info("Nessun consumabile in inventario. Aggiungi consumabili per poterli ordinare.")
+            else:
+                ord_num = st.text_input("Numero Ordine:", placeholder="Es. ORD-2026-001", key="ord_num")
+                ord_stato = st.selectbox("Stato Consegna:", ["In Elaborazione", "Spedito", "Consegnato"], key="ord_stato")
+
+                # Mappa "nome (codice)" -> codice per la selezione fornitore e consumabili
+                forn_options = {f"{r['ragione_sociale']} ({r['p_iva']})": r['p_iva'] for _, r in df_forn.iterrows()}
+                ord_forn_label = st.selectbox("Fornitore:", list(forn_options.keys()), key="ord_forn")
+                ord_forn_piva = forn_options[ord_forn_label]
+
+                cons_options = {f"{r['nome_materiale']} ({r['codice_articolo']})": r['codice_articolo'] for _, r in df_cons.iterrows()}
+                ord_articoli_labels = st.multiselect("Consumabili da ordinare:", list(cons_options.keys()), key="ord_articoli")
+
+                # Quantità e importo per riga
+                righe = []
+                for label in ord_articoli_labels:
+                    q = st.number_input(f"Quantità - {label}", min_value=1, value=1, key=f"ord_q_{label}")
+                    righe.append((cons_options[label], q))
+
+                ord_importo = st.number_input("Importo Totale Ordine (€):", min_value=0.0, value=0.0, key="ord_importo")
+
+                # Controllo allergeni: mostra gli allergeni dei consumabili selezionati
+                if ord_articoli_labels:
+                    allergeni_map = {r['codice_articolo']: r['allergeni_presenti'] for _, r in df_cons.iterrows()}
+                    allergeni_presenti = [
+                        f"{label}: {allergeni_map[cons_options[label]]}"
+                        for label in ord_articoli_labels
+                        if allergeni_map[cons_options[label]]
+                    ]
+                    if allergeni_presenti:
+                        st.warning("⚠️ Attenzione allergeni nei consumabili ordinati:\n\n" + "\n\n".join(allergeni_presenti))
+
+                if st.button("Registra Ordine"):
+                    if not ord_num:
+                        st.error("Inserisci il numero d'ordine.")
+                    elif not righe:
+                        st.error("Seleziona almeno un consumabile da ordinare (un ordine deve contenere almeno un articolo).")
+                    else:
+                        # Ordine + dettagli in un'unica transazione atomica
+                        statements = [(
+                            "INSERT INTO ORDINE (n_ordine, data_ordine, importo_totale, stato_consegna, p_iva_fornitore) VALUES (%s, CURRENT_DATE, %s, %s, %s);",
+                            (ord_num, ord_importo, ord_stato, ord_forn_piva)
+                        )]
+                        for cod_art, qta in righe:
+                            statements.append((
+                                "INSERT INTO DETTAGLIO_ORDINE (n_ordine, codice_articolo, quantita) VALUES (%s, %s, %s);",
+                                (ord_num, cod_art, qta)
+                            ))
+                        if run_transaction(statements):
+                            st.success(f"Ordine {ord_num} registrato con {len(righe)} righe! 📦")
+
         with tab_admin3:
             st.subheader("Crea un Nuovo Evento")
             ev_tipo = st.selectbox("Tipologia Evento:", ["Laboratorio Interno (B2C)", "Evento Partner (B2B2C)"])
@@ -534,30 +606,56 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
                 lab_titolo = st.text_input("Titolo Laboratorio:")
                 lab_desc = st.text_area("Descrizione:")
                 lab_prot = st.text_input("Protocollo Operativo (es. Lavoro Manuale):")
-                lab_modulo = st.number_input("ID Modulo Didattico Associato:", min_value=1, value=1)
-                
+
+                # Selezione del modulo didattico da elenco (evita di dover conoscere l'id numerico)
+                df_moduli = run_query("SELECT id_modulo, nome FROM MODULO_DIDATTICO ORDER BY nome;")
+                if df_moduli is not None and not df_moduli.empty:
+                    modulo_options = {f"{r['nome']} (ID {r['id_modulo']})": int(r['id_modulo']) for _, r in df_moduli.iterrows()}
+                    lab_modulo_label = st.selectbox("Modulo Didattico Associato:", list(modulo_options.keys()))
+                    lab_modulo = modulo_options[lab_modulo_label]
+                else:
+                    st.warning("Nessun modulo didattico presente: creane uno prima di pianificare un laboratorio.")
+                    lab_modulo = None
+
                 if st.button("Pianifica Laboratorio"):
-                    q_ev = "INSERT INTO EVENTO (data_inizio, data_fine, partecipanti_max, costo_biglietto, nome_area) VALUES (%s, %s, %s, %s, %s) RETURNING id_evento;"
-                    df_ev = run_query(q_ev, (ev_start, ev_end, ev_max, ev_costo, ev_area))
-                    if df_ev is not None:
-                        new_ev_id = int(df_ev.iloc[0]['id_evento'])
-                        q_lab = "INSERT INTO LABORATORIO (id_evento, codice_lab, titolo, descrizione, protocollo_op, id_modulo) VALUES (%s, %s, %s, %s, %s, %s);"
-                        run_query(q_lab, (new_ev_id, lab_cod, lab_titolo, lab_desc, lab_prot, lab_modulo))
-                        st.success(f"Laboratorio Interno Creato! ID Evento: {new_ev_id}")
-            
+                    if lab_modulo is None:
+                        st.error("Impossibile creare il laboratorio senza un modulo didattico.")
+                    else:
+                        q_ev = "INSERT INTO EVENTO (data_inizio, data_fine, partecipanti_max, costo_biglietto, nome_area) VALUES (%s, %s, %s, %s, %s) RETURNING id_evento;"
+                        df_ev = run_query(q_ev, (ev_start, ev_end, ev_max, ev_costo, ev_area))
+                        if df_ev is not None:
+                            new_ev_id = int(df_ev.iloc[0]['id_evento'])
+                            q_lab = "INSERT INTO LABORATORIO (id_evento, codice_lab, titolo, descrizione, protocollo_op, id_modulo) VALUES (%s, %s, %s, %s, %s, %s);"
+                            run_query(q_lab, (new_ev_id, lab_cod, lab_titolo, lab_desc, lab_prot, lab_modulo))
+                            st.success(f"Laboratorio Interno Creato! ID Evento: {new_ev_id}")
+
             else:
                 part_titolo = st.text_input("Titolo dell'Evento Partner:")
-                part_id = st.number_input("ID Partner (Cliente B2B):", min_value=1)
+
+                # Selezione dell'azienda partner da elenco.
+                # NB: EVENTO_PARTNER.id_partner referenzia AZIENDA_PARTNER.id_cliente (che è la PK).
+                df_partner = run_query("SELECT id_cliente, nome_azienda, p_iva FROM AZIENDA_PARTNER ORDER BY nome_azienda;")
+                if df_partner is not None and not df_partner.empty:
+                    partner_options = {f"{r['nome_azienda']} - P.IVA {r['p_iva']} (id_cliente {r['id_cliente']})": int(r['id_cliente']) for _, r in df_partner.iterrows()}
+                    part_label = st.selectbox("Azienda Partner Organizzatrice:", list(partner_options.keys()))
+                    part_id = partner_options[part_label]
+                else:
+                    st.warning("Nessuna azienda partner registrata: registrane una nella tab 'Registrazione Utenti'.")
+                    part_id = None
+
                 part_fee = st.slider("Percentuale di Fee per FlowForest (%):", 0.0, 100.0, 20.0)
-                
+
                 if st.button("Pianifica Evento Partner"):
-                    q_ev = "INSERT INTO EVENTO (data_inizio, data_fine, partecipanti_max, costo_biglietto, nome_area) VALUES (%s, %s, %s, %s, %s) RETURNING id_evento;"
-                    df_ev = run_query(q_ev, (ev_start, ev_end, ev_max, ev_costo, ev_area))
-                    if df_ev is not None:
-                        new_ev_id = int(df_ev.iloc[0]['id_evento'])
-                        q_part = "INSERT INTO EVENTO_PARTNER (id_evento, titolo, id_partner, fee_percentuale) VALUES (%s, %s, %s, %s);"
-                        run_query(q_part, (new_ev_id, part_titolo, part_id, part_fee))
-                        st.success(f"Evento Partner Creato! ID Evento: {new_ev_id}")
+                    if part_id is None:
+                        st.error("Impossibile creare l'evento senza un'azienda partner.")
+                    else:
+                        q_ev = "INSERT INTO EVENTO (data_inizio, data_fine, partecipanti_max, costo_biglietto, nome_area) VALUES (%s, %s, %s, %s, %s) RETURNING id_evento;"
+                        df_ev = run_query(q_ev, (ev_start, ev_end, ev_max, ev_costo, ev_area))
+                        if df_ev is not None:
+                            new_ev_id = int(df_ev.iloc[0]['id_evento'])
+                            q_part = "INSERT INTO EVENTO_PARTNER (id_evento, titolo, id_partner, fee_percentuale) VALUES (%s, %s, %s, %s);"
+                            run_query(q_part, (new_ev_id, part_titolo, part_id, part_fee))
+                            st.success(f"Evento Partner Creato! ID Evento: {new_ev_id}")
 
         with tab_admin4:
             st.subheader("Report Finanziari e Analisi")
