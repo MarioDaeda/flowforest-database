@@ -12,6 +12,7 @@
 - [] aggiungere CREATE TABLE in SQL prima delle query DML
 
 # CODICE
+- [] togliere la scelta al login tra cliente e admin
 - [] trattare questa cosa che mi ha detto opus alla fine della sessione. Problema: disallineamento tra relazione e codice (sezione UI)
 Dove si trova: relazione/Relazione_Completa_FlowForest.md, sezione "Progettazione dell'Applicazione" → "2. Interfaccia Utente e Funzionalità" (circa righe 566-576 nel file originale, ora spostate per l'aggiunta della sezione 3).
 
