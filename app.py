@@ -2,8 +2,11 @@ import streamlit as st
 import pandas as pd
 import psycopg2
 import datetime
-import json
 import os
+import bcrypt
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Configurazione della Pagina
 st.set_page_config(
@@ -64,16 +67,47 @@ if 'authenticated' not in st.session_state:
 if 'user_email' not in st.session_state:
     st.session_state['user_email'] = None
 
-# Carica credenziali da file
-def load_credentials():
-    try:
-        with open('credentials.json', 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        st.error("File credentials.json non trovato!")
-        return None
+# Credenziali del database: SOLO da variabili d'ambiente (.env in locale,
+# secrets del servizio di hosting in produzione). Mai committate nel repo.
+# Neon richiede sslmode=require per connessioni sicure.
+DB_DEFAULTS = {
+    'host': os.environ.get('DB_HOST', ''),
+    'database': os.environ.get('DB_NAME', ''),
+    'user': os.environ.get('DB_USER', ''),
+    'password': os.environ.get('DB_PASSWORD', ''),
+    'port': os.environ.get('DB_PORT', '5432'),
+    'sslmode': 'require',
+}
 
-CREDENTIALS_DATA = load_credentials()
+# Gli account applicativi (staff/cliente) vivono nella tabella UTENTE_APP sul
+# database cloud, non in un file locale: così il login è identico da
+# qualunque dispositivo/deploy si acceda al portale.
+def verifica_credenziali(identificativo, password, ruoli_ammessi):
+    try:
+        conn = psycopg2.connect(**DB_DEFAULTS)
+    except Exception as e:
+        st.sidebar.error(f"Errore di connessione al database: {e}")
+        return None
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT password_hash, ruolo, codice_fiscale
+            FROM UTENTE_APP
+            WHERE identificativo = %s AND ruolo = ANY(%s)
+            """,
+            (identificativo, ruoli_ammessi),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return {"found": False}
+        password_hash, ruolo, codice_fiscale = row
+        if bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8")):
+            return {"found": True, "ok": True, "ruolo": ruolo, "codice_fiscale": codice_fiscale}
+        return {"found": True, "ok": False}
+    finally:
+        cur.close()
+        conn.close()
 
 # Sidebar per l'autenticazione utente
 st.sidebar.image("logo_flow.jpeg", use_container_width=True)
@@ -89,36 +123,37 @@ if not st.session_state['authenticated']:
         password_input = st.sidebar.text_input("Password:", type="password", placeholder="Inserisci password")
 
         if st.sidebar.button("Accedi"):
-            client_users = CREDENTIALS_DATA.get('client_users', {}) if CREDENTIALS_DATA else {}
-            if email_input in client_users:
-                if client_users[email_input]["password"] == password_input:
-                    st.session_state['authenticated'] = True
-                    st.session_state['user_role'] = 'cliente'
-                    st.session_state['user_email'] = email_input
-                    st.sidebar.success("✅ Accesso eseguito!")
-                    st.rerun()
-                else:
-                    st.sidebar.error("❌ Password errata!")
-            else:
+            esito = verifica_credenziali(email_input, password_input, ["cliente"])
+            if esito is None:
+                pass  # errore di connessione già mostrato
+            elif not esito["found"]:
                 st.sidebar.error("❌ Email non trovata!")
+            elif not esito["ok"]:
+                st.sidebar.error("❌ Password errata!")
+            else:
+                st.session_state['authenticated'] = True
+                st.session_state['user_role'] = 'cliente'
+                st.session_state['user_email'] = email_input
+                st.sidebar.success("✅ Accesso eseguito!")
+                st.rerun()
     else:
         st.sidebar.markdown("Accedi al portale con le tue credenziali di staff.")
         username_input = st.sidebar.text_input("Username:", placeholder="Inserisci username")
         password_input = st.sidebar.text_input("Password:", type="password", placeholder="Inserisci password")
 
         if st.sidebar.button("Accedi"):
-            staff_users = CREDENTIALS_DATA.get('staff_users', {}) if CREDENTIALS_DATA else {}
-            if username_input in staff_users:
-                user_cred = staff_users[username_input]
-                if user_cred["password"] == password_input:
-                    st.session_state['authenticated'] = True
-                    st.session_state['user_role'] = user_cred["role"]
-                    st.sidebar.success("✅ Accesso eseguito!")
-                    st.rerun()
-                else:
-                    st.sidebar.error("❌ Password errata!")
-            else:
+            esito = verifica_credenziali(username_input, password_input, ["admin", "server"])
+            if esito is None:
+                pass  # errore di connessione già mostrato
+            elif not esito["found"]:
                 st.sidebar.error("❌ Username non trovato!")
+            elif not esito["ok"]:
+                st.sidebar.error("❌ Password errata!")
+            else:
+                st.session_state['authenticated'] = True
+                st.session_state['user_role'] = esito["ruolo"]
+                st.sidebar.success("✅ Accesso eseguito!")
+                st.rerun()
 
 if st.session_state['authenticated']:
     st.sidebar.success(f"✅ Autenticato come: **{st.session_state['user_role'].upper()}**")
@@ -134,14 +169,7 @@ if st.session_state['authenticated']:
     # senza vedere/poter modificare la configurazione del DB
     if st.session_state['user_role'] in ['cliente', 'admin']:
         if not st.session_state['db_connected']:
-            db_defaults = CREDENTIALS_DATA.get('db', {}) if CREDENTIALS_DATA else {}
-            conn_info = {
-                'host': db_defaults.get('host'),
-                'database': db_defaults.get('database'),
-                'user': db_defaults.get('user'),
-                'password': db_defaults.get('password'),
-                'port': db_defaults.get('port')
-            }
+            conn_info = dict(DB_DEFAULTS)
             conn = get_connection(conn_info)
             if conn:
                 st.session_state['db_conn_info'] = conn_info
@@ -151,13 +179,13 @@ if st.session_state['authenticated']:
         # Solo server vede il form di configurazione DB
         st.sidebar.markdown("---")
         st.sidebar.title("Configurazione DB")
-        st.sidebar.markdown("Inserisci le credenziali del database PostgreSQL.")
+        st.sidebar.markdown("Inserisci le credenziali del database PostgreSQL (precompilate da variabili d'ambiente, se presenti).")
 
-        db_host = st.sidebar.text_input("Host", value="ep-twilight-sky-asb5geuz.c-4.eu-central-1.aws.neon.tech")
-        db_name = st.sidebar.text_input("Database Name", value="neondb")
-        db_user = st.sidebar.text_input("User", value="neondb_owner")
-        db_password = st.sidebar.text_input("Password", type="password", value="")
-        db_port = st.sidebar.text_input("Port", value="5432")
+        db_host = st.sidebar.text_input("Host", value=DB_DEFAULTS['host'])
+        db_name = st.sidebar.text_input("Database Name", value=DB_DEFAULTS['database'])
+        db_user = st.sidebar.text_input("User", value=DB_DEFAULTS['user'])
+        db_password = st.sidebar.text_input("Password", type="password", value=DB_DEFAULTS['password'])
+        db_port = st.sidebar.text_input("Port", value=DB_DEFAULTS['port'])
 
         if st.sidebar.button("Connetti al Database"):
             conn_info = {

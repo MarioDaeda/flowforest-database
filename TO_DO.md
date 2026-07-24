@@ -16,6 +16,7 @@
 - [] trattare questa cosa che mi ha detto opus alla fine della sessione. Problema: disallineamento tra relazione e codice (sezione UI)
 Dove si trova: relazione/Relazione_Completa_FlowForest.md, sezione "Progettazione dell'Applicazione" → "2. Interfaccia Utente e Funzionalità" (circa righe 566-576 nel file originale, ora spostate per l'aggiunta della sezione 3).
 
+
 Cosa descrive la relazione (obsoleto):
 Tre tab uniche e generiche:
 
