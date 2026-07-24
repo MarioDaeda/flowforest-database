@@ -241,9 +241,9 @@ Nello schema ER non sono presenti dati mantenuti appositamente per ridondanza st
 
 ## 3. Raffinamento dello Schema ed eliminazione Gerarchie
 Nel passaggio da Modello Concettuale a Modello Logico si è resa necessaria la traduzione delle gerarchie.
-1. **Risorse Umane e Staff:** Utilizzo della *Class Table Inheritance*. Le classi figlie mantengono tabelle distinte relazionate 1:1 con la PK della tabella padre (`RISORSA_UMANA`). La scelta è dettata dal fatto che lo staff può ricoprire ruoli multipli contemporaneamente (es. la stessa persona può essere Formatore e Amministrativo).
-2. **Clienti:** Eliminazione e divisione. I clienti privati sono identificati tramite una tabella di puro raccordo con la persona fisica, mentre i partner e le aziende fatturanti mantengono tabelle isolate vista l'esclusività totale.
-3. **Eventi:** La struttura per `EVENTO`, `LABORATORIO` ed `EVENTO_PARTNER` adotta la condivisione della chiave primaria derivata dal padre, garantendo isolamento dei metadati (fee percentuale vs moduli didattici).
+1. **Risorse Umane e Staff:** La superclasse RISORSA_UMANA viene mantenuta e collegata tramite relazioni 1:1 con le tabelle distinte delle classi figlie, le quali derivano la chiave primaria dal padre. Questa soluzione consente di gestire ruoli multipli e simultanei (es. la stessa persona che è sia Formatore che Amministrativo).
+2. **Clienti:** Si è optato per l'eliminazione della superclasse tramite collasso verso il basso, separando nettamente i sottotipi in tabelle distinte data l'esclusività totale dei ruoli. I clienti privati sono gestiti tramite una tabella di raccordo con la persona fisica, mentre partner e aziende fatturanti mantengono tabelle isolate.
+3. **Eventi:** Per la gerarchia tra EVENTO, LABORATORIO ed EVENTO_PARTNER si è utilizzata la trasformazione in associazioni 1:1 con condivisione della chiave primaria derivata dal padre, garantendo l'isolamento dei metadati specifici (es. moduli didattici vs fee percentuale).
 
 ## 4. Schema Relazionale Finale
 *Legenda: **<u>sottolineatura</u>** indica la Chiave Primaria (PK), **FK** (Foreign Key) indica le chiavi esterne e **AK** (Alternate Key) indica le chiavi univoche secondarie.*
