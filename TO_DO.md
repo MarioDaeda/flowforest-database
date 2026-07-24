@@ -4,7 +4,7 @@
     - [ ] concettuale evoluzioni
 - [ ] schema scheletro(solo entità e pochi dettagli) (fase distinta, prima dei raffinamenti) — verificare se coincide con "evoluzioni"
 
-- [ ] dire se raffinamento gerarchia è verso l'alto/basso/tabelle distinte, per ogni gerarchia
+- [X] dire se raffinamento gerarchia è verso l'alto/basso/tabelle distinte, per ogni gerarchia
 
 - [ ] gli schemi di navigazione e le tabelle degli accessi
 - [ ] traduzione sistematica di entità/associazioni in relazioni (non solo lo schema finale)
