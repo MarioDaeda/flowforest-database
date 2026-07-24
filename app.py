@@ -66,6 +66,8 @@ if 'authenticated' not in st.session_state:
     st.session_state['authenticated'] = False
 if 'user_email' not in st.session_state:
     st.session_state['user_email'] = None
+if 'user_cf' not in st.session_state:
+    st.session_state['user_cf'] = None
 
 # Credenziali del database: SOLO da variabili d'ambiente (.env in locale,
 # secrets del servizio di hosting in produzione). Mai committate nel repo.
@@ -79,10 +81,10 @@ DB_DEFAULTS = {
     'sslmode': 'require',
 }
 
-# Gli account applicativi (staff/cliente) vivono nella tabella UTENTE_APP sul
-# database cloud, non in un file locale: così il login è identico da
-# qualunque dispositivo/deploy si acceda al portale.
-def verifica_credenziali(identificativo, password, ruoli_ammessi):
+# Anche lo STAFF fa login "da persona": sono le persone fisiche presenti in
+# RISORSA_UMANA. Login con mail + password di PERSONA. Ogni dipendente accede
+# come 'admin' (accesso pieno). Nessun account applicativo separato.
+def verifica_credenziali_staff(mail, password):
     try:
         conn = psycopg2.connect(**DB_DEFAULTS)
     except Exception as e:
@@ -92,18 +94,66 @@ def verifica_credenziali(identificativo, password, ruoli_ammessi):
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT password_hash, ruolo, codice_fiscale
-            FROM UTENTE_APP
-            WHERE identificativo = %s AND ruolo = ANY(%s)
+            SELECT p.password, p.codice_fiscale, p.nome, p.cognome, ru.ruolo
+            FROM PERSONA p
+            JOIN RISORSA_UMANA ru ON ru.codice_fiscale = p.codice_fiscale
+            WHERE p.mail = %s
             """,
-            (identificativo, ruoli_ammessi),
+            (mail,),
         )
         row = cur.fetchone()
         if row is None:
             return {"found": False}
-        password_hash, ruolo, codice_fiscale = row
-        if bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8")):
-            return {"found": True, "ok": True, "ruolo": ruolo, "codice_fiscale": codice_fiscale}
+        password_reale, codice_fiscale, nome, cognome, ruolo_lavorativo = row
+        if password == password_reale:
+            return {
+                "found": True,
+                "ok": True,
+                "ruolo": "admin",  # tutta la risorsa_umana ha accesso pieno
+                "ruolo_lavorativo": ruolo_lavorativo,
+                "codice_fiscale": codice_fiscale,
+                "nome": nome,
+                "cognome": cognome,
+            }
+        return {"found": True, "ok": False}
+    finally:
+        cur.close()
+        conn.close()
+
+
+# I CLIENTI, invece, sono le persone fisiche già registrate: il login avviene
+# direttamente contro PERSONA (mail + password) verificando che quella persona
+# sia effettivamente un cliente (presente in PERSONA_CLIENTE). Nessun account
+# applicativo separato: si accede "da persona".
+def verifica_credenziali_cliente(mail, password):
+    try:
+        conn = psycopg2.connect(**DB_DEFAULTS)
+    except Exception as e:
+        st.sidebar.error(f"Errore di connessione al database: {e}")
+        return None
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT p.password, p.codice_fiscale, p.nome, p.cognome
+            FROM PERSONA p
+            JOIN PERSONA_CLIENTE pc ON pc.codice_fiscale = p.codice_fiscale
+            WHERE p.mail = %s
+            """,
+            (mail,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return {"found": False}
+        password_reale, codice_fiscale, nome, cognome = row
+        if password == password_reale:
+            return {
+                "found": True,
+                "ok": True,
+                "codice_fiscale": codice_fiscale,
+                "nome": nome,
+                "cognome": cognome,
+            }
         return {"found": True, "ok": False}
     finally:
         cur.close()
@@ -123,36 +173,39 @@ if not st.session_state['authenticated']:
         password_input = st.sidebar.text_input("Password:", type="password", placeholder="Inserisci password")
 
         if st.sidebar.button("Accedi"):
-            esito = verifica_credenziali(email_input, password_input, ["cliente"])
+            esito = verifica_credenziali_cliente(email_input, password_input)
             if esito is None:
                 pass  # errore di connessione già mostrato
             elif not esito["found"]:
-                st.sidebar.error("❌ Email non trovata!")
+                st.sidebar.error("❌ Email non trovata tra i clienti!")
             elif not esito["ok"]:
                 st.sidebar.error("❌ Password errata!")
             else:
                 st.session_state['authenticated'] = True
                 st.session_state['user_role'] = 'cliente'
                 st.session_state['user_email'] = email_input
-                st.sidebar.success("✅ Accesso eseguito!")
+                st.session_state['user_cf'] = esito["codice_fiscale"]
+                st.sidebar.success(f"✅ Benvenuto/a {esito['nome']}!")
                 st.rerun()
     else:
-        st.sidebar.markdown("Accedi al portale con le tue credenziali di staff.")
-        username_input = st.sidebar.text_input("Username:", placeholder="Inserisci username")
+        st.sidebar.markdown("Accedi con la mail aziendale (personale dipendente).")
+        email_staff_input = st.sidebar.text_input("Email:", placeholder="nome.cognome@email.com")
         password_input = st.sidebar.text_input("Password:", type="password", placeholder="Inserisci password")
 
         if st.sidebar.button("Accedi"):
-            esito = verifica_credenziali(username_input, password_input, ["admin", "server"])
+            esito = verifica_credenziali_staff(email_staff_input, password_input)
             if esito is None:
                 pass  # errore di connessione già mostrato
             elif not esito["found"]:
-                st.sidebar.error("❌ Username non trovato!")
+                st.sidebar.error("❌ Email non trovata tra il personale!")
             elif not esito["ok"]:
                 st.sidebar.error("❌ Password errata!")
             else:
                 st.session_state['authenticated'] = True
                 st.session_state['user_role'] = esito["ruolo"]
-                st.sidebar.success("✅ Accesso eseguito!")
+                st.session_state['user_email'] = email_staff_input
+                st.session_state['user_cf'] = esito["codice_fiscale"]
+                st.sidebar.success(f"✅ Benvenuto/a {esito['nome']} ({esito['ruolo_lavorativo']})!")
                 st.rerun()
 
 if st.session_state['authenticated']:
@@ -208,6 +261,7 @@ if st.session_state['authenticated']:
         st.session_state['authenticated'] = False
         st.session_state['user_role'] = None
         st.session_state['user_email'] = None
+        st.session_state['user_cf'] = None
         st.session_state['db_connected'] = False
         st.session_state['db_conn_info'] = None
         st.rerun()
