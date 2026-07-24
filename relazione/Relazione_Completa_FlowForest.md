@@ -230,11 +230,24 @@ Il carico di lavoro del database è guidato dalle seguenti operazioni principali
 
 ## 1. Stima dei Volumi e delle Frequenze
 Al fine di operare scelte progettuali coerenti, si ipotizza il seguente volume di dati in uno scenario reale (basato sulla stima di circa 2 eventi mensili da 30-40 partecipanti) su base annua:
+
+### Volumi Operativi Principali
 *   **Eventi/Laboratori**: ~24 istanze all'anno (2 al mese).
 *   **Biglietti Persona**: ~1000 istanze all'anno (media di 40 biglietti per evento).
 *   **Feedback**: ~500 istanze all'anno (stimando che circa il 50% dei partecipanti lasci una recensione).
 *   **Clienti e Persone Anagrafate**: ~1000 istanze in progressivo aumento.
+*   **Personale (Risorse Umane)**: ~15-20 istanze stabili nel tempo.
+
+### Volumi di Inventario e Supply Chain
 *   **Materiale**: ~200 istanze costanti in inventario.
+    - **Attrezzature**: ~120 beni riutilizzabili (tende, attrezzi, strutture portatili).
+    - **Consumabili**: ~80 beni a consumo (alimenti, materiali didattici monouso, disinfettanti, etc.).
+*   **Fornitori**: ~8-12 fornitori attivi (suddivisi per categoria: alimentari, attrezzatura, materiale didattico).
+*   **Ordini ai Fornitori**: ~8-10 ordini all'anno (stima conservativa basata su ciclo di riordino ogni 6-8 settimane).
+*   **Righe d'Ordine (Dettagli)**: ~50-100 istanze all'anno (media di 5-10 articoli per ordine).
+*   **Impiego Materiale** (relazione tra Evento e Materiale): ~70-100 istanze all'anno
+<!---     - Ogni evento usa mediamente 3-4 materiali diversi (es. attrezzatura principale + consumabili specifici + materiale di supporto).
+    - Esempio: un laboratorio di lavorazione del legno richiede accette, martelli, disinfettante mani e moduli didattici stampati. --->
 
 ## 2. Analisi delle Ridondanze
 Nello schema ER non sono presenti dati mantenuti appositamente per ridondanza strutturale (come il numero totale dei partecipanti calcolato a priori su un evento o il calcolo in tempo reale del fatturato). Si opta per l'assenza totale di ridondanze, preferendo calcolare i totali a runtime tramite istruzioni `COUNT` e `SUM` in SQL, poiché il volume d'accesso e le prestazioni del DBMS cloud lo permettono agilmente senza influire negativamente sull'efficienza.
