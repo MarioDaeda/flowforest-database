@@ -3,7 +3,6 @@ import pandas as pd
 import psycopg2
 import datetime
 import os
-import bcrypt
 from dotenv import load_dotenv
 
 load_dotenv()

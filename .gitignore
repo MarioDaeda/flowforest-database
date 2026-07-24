@@ -3,3 +3,5 @@ credenziali.md
 credentials.json
 credenzialiDB.md
 .env
+__pycache__/*
+__pycache__/app.cpython-314.pyc
