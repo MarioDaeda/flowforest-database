@@ -1,22 +1,27 @@
 # RELAZIONE
+- [ ] far eoperaizone sql di visualizzare quantità materiale specifico o materiali in generale
 - [ ] inserire foto schemi
     - [ ] concettuale
     - [ ] concettuale evoluzioni
 - [ ] schema scheletro(solo entità e pochi dettagli) (fase distinta, prima dei raffinamenti) — verificare se coincide con "evoluzioni"
 
-- [X] dire se raffinamento gerarchia è verso l'alto/basso/tabelle distinte, per ogni gerarchia
+
+- [ ] Gerarchie
+    - [ ]scegliere  come tradofromare materiale,  consumabili e attrezzatura
 
 - [ ] gli schemi di navigazione e le tabelle degli accessi
     - [ ] inserire frequenze per tutte le operazioni
+    - [ ] controllare note scritte nelle tabelle da llm
     
 - [ ] traduzione sistematica di entità/associazioni in relazioni (non solo lo schema finale)
 ## nice to have
 - [] aggiungere CREATE TABLE in SQL prima delle query DML
 
 # CODICE
-
+- [ ] far eoperaizone sql di visualizzare quantità materiale specifico o materiali in generale
 - [] trattare questa cosa che mi ha detto opus alla fine della sessione. Problema: disallineamento tra relazione e codice (sezione UI)
 Dove si trova: relazione/Relazione_Completa_FlowForest.md, sezione "Progettazione dell'Applicazione" → "2. Interfaccia Utente e Funzionalità" (circa righe 566-576 nel file originale, ora spostate per l'aggiunta della sezione 3).
+- [ ] renderlo meno AI style usando opus/fable spinti(prima preparare prompt)
 
 
 Cosa descrive la relazione (obsoleto):

@@ -133,7 +133,7 @@ Il carico di lavoro del database è guidato dalle seguenti operazioni principali
 
 ### Operazioni per i Gestori del Bosco (Amministratori)
 *   **(OP.G1) Registrazione Cliente:** Registrare un nuovo utente privato o azienda partner.
-*   **(OP.G2) Gestione Ordini:** Registrare nuovi ordini ai fornitori, con controllo degli allergeni per i consumabili.
+*   **(OP.G2) Gestione Ordini:** Registrare nuovi ordini ai fornitori.
 *   **(OP.G3) Gestione Inventario:** Inserire o eliminare materiale dall'inventario del magazzino.
 *   **(OP.G4) Programmazione Eventi:** Creare e prenotare un nuovo Laboratorio (interno o esterno) indicando partecipanti, costi e tipo.
 *   **(OP.G5) Modifica Laboratori:** Aggiornare tutti gli elementi testuali e didattici riguardanti i laboratori.
@@ -141,6 +141,7 @@ Il carico di lavoro del database è guidato dalle seguenti operazioni principali
 *   **(OP.G7) Analisi Spesa Clienti:** Visualizzare la spesa media annua di ogni cliente registrato.
 *   **(OP.G8) Classifica Partner:** Scoprire il formatore esterno che ha generato il maggior volume di ricavi tramite fee nell'anno.
 *   **(OP.G9) Fatturato:** Visualizzare il fatturato complessivo generato da ogni singolo evento.
+*   **(OP.G10) Gestione inventario:** verificare le disponibilità dei vari materiali in inventario, con controllo degli allergeni per i consumabili
 
 ---
 
@@ -231,21 +232,34 @@ Il carico di lavoro del database è guidato dalle seguenti operazioni principali
 ## 1. Stima dei Volumi e delle Frequenze
 Al fine di operare scelte progettuali coerenti, si ipotizza il seguente volume di dati in uno scenario reale (basato sulla stima di circa 2 eventi mensili da 30-40 partecipanti) su base annua:
 
-### Volumi Operativi Principali
-*   **Eventi/Laboratori**: ~24 istanze all'anno (2 al mese).
-*   **Biglietti Persona**: ~1000 istanze all'anno (media di 40 biglietti per evento).
-*   **Feedback**: ~500 istanze all'anno (stimando che circa il 50% dei partecipanti lasci una recensione).
-*   **Clienti e Persone Anagrafate**: ~1000 istanze in progressivo aumento.
-*   **Personale (Risorse Umane)**: ~15-20 istanze stabili nel tempo.
+### Tavola dei Volumi
 
-### Volumi di Inventario e Supply Chain
-*   **Materiale**: ~200 istanze costanti in inventario.
-    - **Attrezzature**: ~120 beni riutilizzabili (tende, attrezzi, strutture portatili).
-    - **Consumabili**: ~80 beni a consumo (alimenti, materiali didattici monouso, disinfettanti, etc.).
-*   **Fornitori**: ~8-12 fornitori attivi (suddivisi per categoria: alimentari, attrezzatura, materiale didattico).
-*   **Ordini ai Fornitori**: ~8-10 ordini all'anno (stima conservativa basata su ciclo di riordino ogni 6-8 settimane).
-*   **Righe d'Ordine (Dettagli)**: ~50-100 istanze all'anno (media di 5-10 articoli per ordine).
-*   **Impiego Materiale** (relazione tra Evento e Materiale): ~70-100 istanze all'anno
+| Concetto | Tipo | Volume | Note |
+|---|---|---|---|
+| PERSONA_CLIENTE | E | 1000 | snapshot attuale, non moltiplicato (nessun tasso di crescita fornito) |
+| PERSONALE | E | 18 | media di 15-20, stabile |
+| MATERIALE | E | 200 | catalogo, costante |
+| ATTREZZATURA | E | 120 | sottoclasse di MATERIALE (partizione P) |
+| CONSUMABILE | E | 80 | sottoclasse di MATERIALE (120+80=200) |
+| FORNITORE | E | 10 | media di 8-12, stabile |
+| EVENTO | E | 120 | 24/anno x 5 anni |
+| ORDINE | E | 45 | 9/anno (media 8-10) x 5 anni |
+| BIGLIETTO | R (Cliente-Evento) | 5000 | 1000/anno x 5 anni |
+| FEEDBACK | E | 2500 | 500/anno x 5 anni |
+| Riceve (Fornitore-Ordine) | R | 45 | = Volume(ORDINE), cardinalita 1-1 su ORDINE |
+| Include (Consumabile-Ordine, Righe Ordine) | R | 375 | 75/anno (media 50-100) x 5 anni |
+| Impiegato (Materiale-Evento, Impiego Materiale) | R | 425 | 85/anno (media 70-100) x 5 anni |
+
+### Tavola delle Frequenze
+
+| Concetto | Frequenza | Tipo |
+|---|---|---|
+| EVENTO | ~2 al mese | I |
+| BIGLIETTO | ~3 al giorno | I |
+| FEEDBACK | ~1-2 al giorno | I |
+| ORDINE (+ Riceve) | ~1 ogni 5-6 settimane | I |
+| Include (Righe Ordine) | ~6 al mese | I |
+| Impiegato (Impiego Materiale) | ~7 al mese | I |
 <!---     - Ogni evento usa mediamente 3-4 materiali diversi (es. attrezzatura principale + consumabili specifici + materiale di supporto).
     - Esempio: un laboratorio di lavorazione del legno richiede accette, martelli, disinfettante mani e moduli didattici stampati. --->
 
