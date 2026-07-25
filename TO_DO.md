@@ -3,13 +3,14 @@
 - [ ] inserire foto schemi
     - [ ] concettuale
     - [ ] concettuale evoluzioni
+- [ ] inserirre quantità di prodotto in include e poi 
 - [ ] schema scheletro(solo entità e pochi dettagli) (fase distinta, prima dei raffinamenti) — verificare se coincide con "evoluzioni"
 
 
 - [ ] Gerarchie
     - [ ]scegliere  come tradofromare materiale,  consumabili e attrezzatura
 
-- [ ] gli schemi di navigazione e le tabelle degli accessi
+- [ ] gli schemi di navigazione e le tabelle degli accessi <--calcoli in G fogli
     - [ ] inserire frequenze per tutte le operazioni
     - [ ] controllare note scritte nelle tabelle da llm
     
