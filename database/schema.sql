@@ -1,9 +1,5 @@
 -- Schema logico finale FlowForest
-<<<<<<< HEAD
--- Generato dal database PostgreSQL tramite tools/export_schema.py.
-=======
 -- Generato dal database PostgreSQL tramite genera_schema_finale.py.
->>>>>>> 6ba68938b2dbe185ec02630b4ad91749e1d79b49
 -- Non contiene dati né credenziali.
 
 BEGIN;
@@ -91,7 +87,6 @@ CREATE TABLE public."biglietto_persona" (
     "cod_seriale" character varying(50) NOT NULL,
     "data_emissione" date DEFAULT CURRENT_DATE NOT NULL,
     "richiesta_allergie" character varying(255),
-    "biglietto_aziendale" boolean DEFAULT false NOT NULL,
     "prezzo_pagato" numeric(10,2) NOT NULL,
     "id_evento" integer NOT NULL,
     "p_iva_azienda" character varying(11),
@@ -406,7 +401,7 @@ ALTER TABLE ONLY public."biglietto_persona"
     ADD CONSTRAINT "biglietto_persona_codice_fiscale_fkey" FOREIGN KEY (codice_fiscale) REFERENCES persona(codice_fiscale) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public."biglietto_persona"
-    ADD CONSTRAINT "biglietto_persona_id_evento_fkey" FOREIGN KEY (id_evento) REFERENCES evento(id_evento) ON DELETE RESTRICT;
+    ADD CONSTRAINT "biglietto_persona_id_evento_fkey" FOREIGN KEY (id_evento) REFERENCES laboratorio(id_evento) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public."biglietto_persona"
     ADD CONSTRAINT "biglietto_persona_p_iva_azienda_fkey" FOREIGN KEY (p_iva_azienda) REFERENCES azienda_cliente(p_iva) ON DELETE RESTRICT;

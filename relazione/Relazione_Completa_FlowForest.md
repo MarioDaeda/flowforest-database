@@ -1,8 +1,6 @@
 # Relazione Finale di Progetto: Basi di Dati
 **Progetto:** Database per FlowForest
 
-**Versione canonica integrata:** il presente documento unifica l'analisi, la progettazione e l'implementazione del progetto in un'unica numerazione progressiva.
-
 ## Indice
 
 1. Analisi dei requisiti
