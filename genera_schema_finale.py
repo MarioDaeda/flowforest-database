@@ -168,7 +168,11 @@ finally:
 
 lines = [
     "-- Schema logico finale FlowForest",
+<<<<<<< HEAD
     "-- Generato dal database PostgreSQL tramite tools/export_schema.py.",
+=======
+    "-- Generato dal database PostgreSQL tramite genera_schema_finale.py.",
+>>>>>>> 6ba68938b2dbe185ec02630b4ad91749e1d79b49
     "-- Non contiene dati né credenziali.",
     "",
     "BEGIN;",
