@@ -93,7 +93,8 @@ def verifica_credenziali_staff(mail, password):
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT p.password, p.codice_fiscale, p.nome, p.cognome, ru.ruolo
+            SELECT p.password, p.codice_fiscale, p.nome, p.cognome,
+                   COALESCE(ru.mansione, 'Staff') AS mansione
             FROM PERSONA p
             JOIN RISORSA_UMANA ru ON ru.codice_fiscale = p.codice_fiscale
             WHERE p.mail = %s
@@ -291,6 +292,7 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
             conn.commit()
             return df
         except Exception as e:
+            conn.rollback()
             st.error(f"Errore durante l'esecuzione della query: {e}")
             return None
         finally:
@@ -316,6 +318,49 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
             cur.close()
             conn.close()
 
+    def create_event_with_relations(
+        event_params,
+        subtype_query,
+        subtype_params,
+        area_names,
+        module_ids=None,
+    ):
+        """Crea Evento, sottotipo e associazioni in un'unica transazione."""
+        conn = psycopg2.connect(**st.session_state['db_conn_info'])
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO EVENTO (data_inizio, data_fine, partecipanti_max)
+                VALUES (%s, %s, %s)
+                RETURNING id_evento;
+                """,
+                event_params,
+            )
+            event_id = cur.fetchone()[0]
+
+            cur.execute(subtype_query, (event_id, *subtype_params))
+            cur.executemany(
+                "INSERT INTO EVENTO_AREA (id_evento, nome_area) VALUES (%s, %s);",
+                [(event_id, area_name) for area_name in area_names],
+            )
+
+            if module_ids:
+                cur.executemany(
+                    "INSERT INTO LABORATORIO_MODULO (id_evento, id_modulo) VALUES (%s, %s);",
+                    [(event_id, module_id) for module_id in module_ids],
+                )
+
+            conn.commit()
+            return event_id
+        except Exception as e:
+            conn.rollback()
+            st.error(f"Errore durante la creazione dell'evento: {e}")
+            return None
+        finally:
+            cur.close()
+            conn.close()
+
     # Selezione dell'Area Applicativa in base al ruolo
     if st.session_state['user_role'] == 'cliente':
         app_mode = "Area Partecipanti (B2C)"
@@ -337,7 +382,7 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
     if app_mode == "Area Partecipanti (B2C)":
         st.header("👤 Servizi per i Partecipanti")
         
-        tab1, tab2, tab3 = st.tabs(["🎫 Ricerca Biglietto & Attrezzatura", "📅 Eventi Disponibili", "✍️ Compila Feedback"])
+        tab1, tab2, tab3 = st.tabs(["🎫 Ricerca Biglietto & Materiali", "📅 Laboratori Disponibili", "✍️ Compila Feedback"])
         
         with tab1:
             st.subheader("I tuoi Biglietti")
@@ -348,14 +393,17 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
                 q_my_tickets = """
                 SELECT B.cod_seriale, B.data_emissione, B.prezzo_pagato, B.richiesta_allergie,
                        E.data_inizio, E.data_fine,
-                       COALESCE(L.titolo, EP.titolo) AS nome_evento,
-                       E.nome_area
+                       L.codice_lab, L.titolo AS nome_evento,
+                       STRING_AGG(EA.nome_area, ', ' ORDER BY EA.nome_area) AS aree
                 FROM BIGLIETTO_PERSONA B
                 JOIN PERSONA P ON B.codice_fiscale = P.codice_fiscale
                 JOIN EVENTO E ON B.id_evento = E.id_evento
-                LEFT JOIN LABORATORIO L ON E.id_evento = L.id_evento
-                LEFT JOIN EVENTO_PARTNER EP ON E.id_evento = EP.id_evento
+                JOIN LABORATORIO L ON E.id_evento = L.id_evento
+                JOIN EVENTO_AREA EA ON E.id_evento = EA.id_evento
                 WHERE P.mail = %s
+                GROUP BY B.cod_seriale, B.data_emissione, B.prezzo_pagato,
+                         B.richiesta_allergie, E.data_inizio, E.data_fine,
+                         L.codice_lab, L.titolo
                 ORDER BY E.data_inizio DESC;
                 """
                 df_my_tickets = run_query(q_my_tickets, (st.session_state['user_email'],))
@@ -363,23 +411,24 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
                 if df_my_tickets is not None and not df_my_tickets.empty:
                     st.dataframe(df_my_tickets, use_container_width=True)
 
-                    st.subheader("🎒 Attrezzatura Richiesta per i tuoi Eventi:")
+                    st.subheader("🎒 Materiali richiesti per i tuoi Laboratori:")
                     q_my_equip = """
-                    SELECT DISTINCT COALESCE(L.titolo, EP.titolo) AS nome_evento, M.nome_materiale, IM.quantita_impiegata
+                    SELECT DISTINCT L.titolo AS nome_evento,
+                           M.nome_materiale, IM.quantita_impiegata
                     FROM BIGLIETTO_PERSONA B
                     JOIN PERSONA P ON B.codice_fiscale = P.codice_fiscale
                     JOIN EVENTO E ON B.id_evento = E.id_evento
-                    LEFT JOIN LABORATORIO L ON E.id_evento = L.id_evento
-                    LEFT JOIN EVENTO_PARTNER EP ON E.id_evento = EP.id_evento
+                    JOIN LABORATORIO L ON E.id_evento = L.id_evento
                     JOIN IMPIEGO_MATERIALE IM ON B.id_evento = IM.id_evento
                     JOIN MATERIALE M ON IM.codice_articolo = M.codice_articolo
-                    WHERE P.mail = %s;
+                    WHERE P.mail = %s
+                    ORDER BY L.titolo, M.nome_materiale;
                     """
                     df_my_equip = run_query(q_my_equip, (st.session_state['user_email'],))
                     if df_my_equip is not None and not df_my_equip.empty:
                         st.dataframe(df_my_equip, use_container_width=True)
                     else:
-                        st.info("Nessuna attrezzatura particolare richiesta per i tuoi eventi.")
+                        st.info("Nessun materiale particolare richiesto per i tuoi Laboratori.")
                 else:
                     st.info("Non risulta ancora nessun biglietto associato alla tua mail.")
 
@@ -393,13 +442,16 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
                 q_ticket = """
                 SELECT B.cod_seriale, B.data_emissione, B.prezzo_pagato, B.richiesta_allergie,
                        E.data_inizio, E.data_fine,
-                       COALESCE(L.titolo, EP.titolo) AS nome_evento,
-                       E.nome_area
+                       L.codice_lab, L.titolo AS nome_evento,
+                       STRING_AGG(EA.nome_area, ', ' ORDER BY EA.nome_area) AS aree
                 FROM BIGLIETTO_PERSONA B
                 JOIN EVENTO E ON B.id_evento = E.id_evento
-                LEFT JOIN LABORATORIO L ON E.id_evento = L.id_evento
-                LEFT JOIN EVENTO_PARTNER EP ON E.id_evento = EP.id_evento
-                WHERE B.cod_seriale = %s;
+                JOIN LABORATORIO L ON E.id_evento = L.id_evento
+                JOIN EVENTO_AREA EA ON E.id_evento = EA.id_evento
+                WHERE B.cod_seriale = %s
+                GROUP BY B.cod_seriale, B.data_emissione, B.prezzo_pagato,
+                         B.richiesta_allergie, E.data_inizio, E.data_fine,
+                         L.codice_lab, L.titolo;
                 """
                 df_ticket = run_query(q_ticket, (ticket_serial,))
 
@@ -407,33 +459,37 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
                     st.success("Biglietto Trovato!")
                     st.dataframe(df_ticket)
 
-                    # 2. Ricerca Attrezzatura Necessaria
-                    st.subheader("🎒 Attrezzatura Richiesta per l'Evento:")
+                    # 2. Ricerca Materiali Necessari
+                    st.subheader("🎒 Materiali richiesti per il Laboratorio:")
                     q_equip = """
-                    SELECT M.nome_materiale, IM.quantita_impiegata
+                    SELECT M.codice_articolo, M.nome_materiale, IM.quantita_impiegata
                     FROM BIGLIETTO_PERSONA B
                     JOIN IMPIEGO_MATERIALE IM ON B.id_evento = IM.id_evento
                     JOIN MATERIALE M ON IM.codice_articolo = M.codice_articolo
-                    WHERE B.cod_seriale = %s;
+                    WHERE B.cod_seriale = %s
+                    ORDER BY M.nome_materiale;
                     """
                     df_equip = run_query(q_equip, (ticket_serial,))
                     if df_equip is not None and not df_equip.empty:
                         st.dataframe(df_equip)
                     else:
-                        st.info("Nessuna attrezzatura particolare richiesta per questo evento.")
+                        st.info("Nessun materiale particolare richiesto per questo Laboratorio.")
                 else:
                     st.warning("Nessun biglietto trovato con questo codice seriale.")
 
         with tab2:
-            st.subheader("Esplora gli Eventi in Programma")
+            st.subheader("Esplora i Laboratori in Programma")
             q_events = """
-            SELECT E.id_evento, E.data_inizio, E.data_fine, E.costo_biglietto, E.nome_area,
-                   COALESCE(L.titolo, EP.titolo) AS titolo_evento,
-                   CASE WHEN L.id_evento IS NOT NULL THEN 'Interno' ELSE 'Partner' END AS tipologia
+            SELECT E.id_evento, L.codice_lab, L.titolo,
+                   E.data_inizio, E.data_fine, E.partecipanti_max,
+                   L.costo_biglietto,
+                   STRING_AGG(EA.nome_area, ', ' ORDER BY EA.nome_area) AS aree
             FROM EVENTO E
-            LEFT JOIN LABORATORIO L ON E.id_evento = L.id_evento
-            LEFT JOIN EVENTO_PARTNER EP ON E.id_evento = EP.id_evento
-            WHERE E.data_inizio > NOW()
+            JOIN LABORATORIO L ON E.id_evento = L.id_evento
+            JOIN EVENTO_AREA EA ON E.id_evento = EA.id_evento
+            WHERE E.data_inizio > CURRENT_TIMESTAMP
+            GROUP BY E.id_evento, L.codice_lab, L.titolo, E.data_inizio,
+                     E.data_fine, E.partecipanti_max, L.costo_biglietto
             ORDER BY E.data_inizio ASC;
             """
             df_events = run_query(q_events)
@@ -452,17 +508,27 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
                 if not fb_serial:
                     st.error("Inserisci il codice seriale del biglietto.")
                 else:
-                    q_check_ticket = "SELECT 1 FROM BIGLIETTO_PERSONA WHERE cod_seriale = %s;"
-                    df_check = run_query(q_check_ticket, (fb_serial,))
+                    q_check_ticket = """
+                    SELECT 1
+                    FROM BIGLIETTO_PERSONA
+                    WHERE cod_seriale = %s
+                      AND codice_fiscale = %s;
+                    """
+                    df_check = run_query(
+                        q_check_ticket,
+                        (fb_serial, st.session_state['user_cf']),
+                    )
                     if df_check is not None and not df_check.empty:
                         q_insert_fb = """
-                        INSERT INTO FEEDBACK (voto, commento, data_compilazione, cod_seriale) 
+                        INSERT INTO FEEDBACK (voto, commento, data_compilazione, cod_seriale)
                         VALUES (%s, %s, CURRENT_DATE, %s);
                         """
-                        res = run_query(q_insert_fb, (fb_voto, fb_commento, fb_serial))
-                        st.success("Feedback inviato con successo! Grazie per la collaborazione. 🌳")
+                        if run_transaction([
+                            (q_insert_fb, (fb_voto, fb_commento, fb_serial))
+                        ]):
+                            st.success("Feedback inviato con successo! Grazie per la collaborazione. 🌳")
                     else:
-                        st.error("Il codice seriale inserito non corrisponde a nessun biglietto registrato.")
+                        st.error("Il codice seriale non appartiene all'utente autenticato.")
 
     # =========================================================================
     # AREA GESTIONE BOSCO (ADMIN)
@@ -488,14 +554,19 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
         with tab_admin1:
             st.subheader("Registra un Nuovo Utente")
             ut_tipo = st.radio("Tipo di Utente:", ["Cliente Privato (B2C)", "Azienda Partner (B2B)"])
-            
-            ut_tel = st.text_input("Telefono:")
+
             ut_email = st.text_input("Email:")
-            
+
             if ut_tipo == "Cliente Privato (B2C)":
                 cf = st.text_input("Codice Fiscale:")
                 nome = st.text_input("Nome:")
                 cognome = st.text_input("Cognome:")
+                ut_tel = st.text_input("Telefono:")
+                ut_password = st.text_input(
+                    "Password iniziale:",
+                    type="password",
+                    help="Nel prototipo viene salvata in chiaro. Utilizzare solo credenziali dimostrative.",
+                )
                 data_nascita = st.date_input(
                     "Data di Nascita:",
                     value=datetime.date(2000, 1, 1),
@@ -504,40 +575,70 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
                 )
                 note_allergie = st.text_input("Allergie/Intolleranze:")
                 cont_emerg = st.text_input("Contatto di Emergenza:")
-                
+
                 if st.button("Registra Cliente"):
-                    # 1. Inserimento Persona
-                    q_pers = """
-                    INSERT INTO PERSONA (codice_fiscale, nome, cognome, note_allergia, data_nascita, telefono, mail, contatto_emergenza)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (codice_fiscale) DO NOTHING;
-                    """
-                    run_query(q_pers, (cf, nome, cognome, note_allergie, data_nascita, ut_tel, ut_email, cont_emerg))
-                    
-                    # 2. Inserimento Cliente FF
-                    q_cl = "INSERT INTO CLIENTE_FLOWFOREST (telefono, email) VALUES (%s, %s) RETURNING id_cliente;"
-                    df_cl = run_query(q_cl, (ut_tel, ut_email))
-                    if df_cl is not None:
-                        new_id = int(df_cl.iloc[0]['id_cliente'])
-                        q_pc = "INSERT INTO PERSONA_CLIENTE (id_cliente, codice_fiscale) VALUES (%s, %s);"
-                        run_query(q_pc, (new_id, cf))
-                        st.success(f"Cliente Privato registrato con successo! ID Cliente: {new_id}")
-            
+                    if not all([cf, nome, cognome, ut_email, ut_password]):
+                        st.error("Codice fiscale, nome, cognome, email e password sono obbligatori.")
+                    else:
+                        q_cliente = """
+                        WITH nuova_persona AS (
+                            INSERT INTO PERSONA
+                                (codice_fiscale, nome, cognome, note_allergia,
+                                 data_nascita, telefono, mail, password,
+                                 contatto_emergenza)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            RETURNING codice_fiscale
+                        ),
+                        nuovo_cliente AS (
+                            INSERT INTO CLIENTE_FLOWFOREST (data_registrazione)
+                            VALUES (CURRENT_DATE)
+                            RETURNING id_cliente
+                        )
+                        INSERT INTO PERSONA_CLIENTE (id_cliente, codice_fiscale)
+                        SELECT NC.id_cliente, NP.codice_fiscale
+                        FROM nuovo_cliente NC
+                        CROSS JOIN nuova_persona NP
+                        RETURNING id_cliente;
+                        """
+                        df_cliente = run_query(
+                            q_cliente,
+                            (
+                                cf, nome, cognome, note_allergie, data_nascita,
+                                ut_tel, ut_email, ut_password, cont_emerg,
+                            ),
+                        )
+                        if df_cliente is not None and not df_cliente.empty:
+                            new_id = int(df_cliente.iloc[0]['id_cliente'])
+                            st.success(f"Cliente Privato registrato con successo! ID Cliente: {new_id}")
+
             else:
                 p_iva = st.text_input("Partita IVA:")
                 nome_azienda = st.text_input("Nome Azienda:")
                 spec = st.text_input("Specializzazione Outdoor:")
-                
+
                 if st.button("Registra Azienda Partner"):
-                    q_cl = "INSERT INTO CLIENTE_FLOWFOREST (telefono, email) VALUES (%s, %s) RETURNING id_cliente;"
-                    df_cl = run_query(q_cl, (ut_tel, ut_email))
-                    if df_cl is not None:
-                        new_id = int(df_cl.iloc[0]['id_cliente'])
-                        q_ap = """
-                        INSERT INTO AZIENDA_PARTNER (id_cliente, p_iva, nome_azienda, specializzazione, email)
-                        VALUES (%s, %s, %s, %s, %s);
+                    if not all([p_iva, nome_azienda, ut_email]):
+                        st.error("Partita IVA, nome azienda ed email sono obbligatori.")
+                    else:
+                        q_partner = """
+                        WITH nuovo_cliente AS (
+                            INSERT INTO CLIENTE_FLOWFOREST (data_registrazione)
+                            VALUES (CURRENT_DATE)
+                            RETURNING id_cliente
+                        )
+                        INSERT INTO AZIENDA_PARTNER
+                            (id_cliente, p_iva, nome_azienda, specializzazione, email)
+                        SELECT id_cliente, %s, %s, %s, %s
+                        FROM nuovo_cliente
+                        RETURNING id_cliente;
                         """
-                        run_query(q_ap, (new_id, p_iva, nome_azienda, spec, ut_email))
-                        st.success(f"Azienda Partner registrata con successo! ID Partner: {new_id}")
+                        df_partner = run_query(
+                            q_partner,
+                            (p_iva, nome_azienda, spec, ut_email),
+                        )
+                        if df_partner is not None and not df_partner.empty:
+                            new_id = int(df_partner.iloc[0]['id_cliente'])
+                            st.success(f"Azienda Partner registrata con successo! ID Partner: {new_id}")
 
         with tab_admin2:
             st.subheader("Gestione Inventario")
@@ -590,9 +691,25 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
                 st.write("**Elimina Materiale**")
                 del_cod = st.text_input("Codice Articolo da Rimuovere:")
                 if st.button("Elimina Materiale"):
-                    q_del = "DELETE FROM MATERIALE WHERE codice_articolo = %s;"
-                    run_query(q_del, (del_cod,))
-                    st.warning("Materiale rimosso dall'inventario.")
+                    if not del_cod:
+                        st.error("Inserisci il codice del Materiale da rimuovere.")
+                    else:
+                        statements = [
+                            (
+                                "DELETE FROM ATTREZZATURA WHERE codice_articolo = %s;",
+                                (del_cod,),
+                            ),
+                            (
+                                "DELETE FROM CONSUMABILE WHERE codice_articolo = %s;",
+                                (del_cod,),
+                            ),
+                            (
+                                "DELETE FROM MATERIALE WHERE codice_articolo = %s;",
+                                (del_cod,),
+                            ),
+                        ]
+                        if run_transaction(statements):
+                            st.success("Materiale rimosso dall'inventario.")
                     
             st.write("---")
             st.write("**Inventario Attuale**")
@@ -672,42 +789,89 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
                         if run_transaction(statements):
                             st.success(f"Ordine {ord_num} registrato con {len(righe)} righe! 📦")
 
+            st.write("---")
+            st.subheader("📋 Quantità ordinate e disponibilità dei Consumabili")
+            q_order_details = """
+            SELECT O.n_ordine,
+                   O.data_ordine,
+                   O.stato_consegna,
+                   F.ragione_sociale,
+                   D.codice_articolo,
+                   M.nome_materiale,
+                   D.quantita AS quantita_ordinata,
+                   M.quantita_inventario AS quantita_disponibile,
+                   M.soglia_minima_riordino,
+                   C.data_scadenza,
+                   C.allergeni_presenti
+            FROM ORDINE O
+            JOIN FORNITORE F ON F.p_iva = O.p_iva_fornitore
+            JOIN DETTAGLIO_ORDINE D ON D.n_ordine = O.n_ordine
+            JOIN CONSUMABILE C ON C.codice_articolo = D.codice_articolo
+            JOIN MATERIALE M ON M.codice_articolo = C.codice_articolo
+            ORDER BY O.data_ordine DESC, O.n_ordine, M.nome_materiale;
+            """
+            df_order_details = run_query(q_order_details)
+            if df_order_details is not None:
+                st.dataframe(df_order_details, use_container_width=True)
+
         with tab_admin3:
             st.subheader("Crea un Nuovo Evento")
             ev_tipo = st.selectbox("Tipologia Evento:", ["Laboratorio Interno (B2C)", "Evento Partner (B2B2C)"])
-            
+
             ev_start = st.text_input("Inizio (YYYY-MM-DD HH:MM:SS):", value="2026-07-15 09:00:00")
             ev_end = st.text_input("Fine (YYYY-MM-DD HH:MM:SS):", value="2026-07-15 13:00:00")
             ev_max = st.number_input("Partecipanti Max:", min_value=1, value=20)
-            ev_costo = st.number_input("Costo Biglietto (€):", min_value=0.0, value=30.00)
-            ev_area = st.text_input("Nome Area Bosco:", value="Area Nord")
-            
+
+            df_aree = run_query("SELECT nome FROM AREA ORDER BY nome;")
+            area_options = [] if df_aree is None else df_aree["nome"].tolist()
+            ev_aree = st.multiselect(
+                "Aree di svolgimento:",
+                area_options,
+                help="Ogni Evento deve svolgersi in almeno un'Area.",
+            )
+
             if ev_tipo == "Laboratorio Interno (B2C)":
                 lab_cod = st.text_input("Codice Univoco Laboratorio:")
                 lab_titolo = st.text_input("Titolo Laboratorio:")
                 lab_desc = st.text_area("Descrizione:")
                 lab_prot = st.text_input("Protocollo Operativo (es. Lavoro Manuale):")
+                ev_costo = st.number_input("Costo Biglietto (€):", min_value=0.0, value=30.00)
 
-                # Selezione del modulo didattico da elenco (evita di dover conoscere l'id numerico)
+                # La relazione LABORATORIO_MODULO permette più moduli per Laboratorio.
                 df_moduli = run_query("SELECT id_modulo, nome FROM MODULO_DIDATTICO ORDER BY nome;")
                 if df_moduli is not None and not df_moduli.empty:
                     modulo_options = {f"{r['nome']} (ID {r['id_modulo']})": int(r['id_modulo']) for _, r in df_moduli.iterrows()}
-                    lab_modulo_label = st.selectbox("Modulo Didattico Associato:", list(modulo_options.keys()))
-                    lab_modulo = modulo_options[lab_modulo_label]
+                    lab_moduli_labels = st.multiselect(
+                        "Moduli Didattici Associati:",
+                        list(modulo_options.keys()),
+                    )
+                    lab_moduli = [modulo_options[label] for label in lab_moduli_labels]
                 else:
                     st.warning("Nessun modulo didattico presente: creane uno prima di pianificare un laboratorio.")
-                    lab_modulo = None
+                    lab_moduli = []
 
                 if st.button("Pianifica Laboratorio"):
-                    if lab_modulo is None:
-                        st.error("Impossibile creare il laboratorio senza un modulo didattico.")
+                    if not all([lab_cod, lab_titolo, ev_start, ev_end]):
+                        st.error("Codice, titolo e date del Laboratorio sono obbligatori.")
+                    elif not ev_aree:
+                        st.error("Seleziona almeno un'Area.")
+                    elif not lab_moduli:
+                        st.error("Seleziona almeno un Modulo Didattico.")
                     else:
-                        q_ev = "INSERT INTO EVENTO (data_inizio, data_fine, partecipanti_max, costo_biglietto, nome_area) VALUES (%s, %s, %s, %s, %s) RETURNING id_evento;"
-                        df_ev = run_query(q_ev, (ev_start, ev_end, ev_max, ev_costo, ev_area))
-                        if df_ev is not None:
-                            new_ev_id = int(df_ev.iloc[0]['id_evento'])
-                            q_lab = "INSERT INTO LABORATORIO (id_evento, codice_lab, titolo, descrizione, protocollo_op, id_modulo) VALUES (%s, %s, %s, %s, %s, %s);"
-                            run_query(q_lab, (new_ev_id, lab_cod, lab_titolo, lab_desc, lab_prot, lab_modulo))
+                        q_lab = """
+                        INSERT INTO LABORATORIO
+                            (id_evento, codice_lab, titolo, descrizione,
+                             protocollo_op, costo_biglietto)
+                        VALUES (%s, %s, %s, %s, %s, %s);
+                        """
+                        new_ev_id = create_event_with_relations(
+                            (ev_start, ev_end, ev_max),
+                            q_lab,
+                            (lab_cod, lab_titolo, lab_desc, lab_prot, ev_costo),
+                            ev_aree,
+                            lab_moduli,
+                        )
+                        if new_ev_id is not None:
                             st.success(f"Laboratorio Interno Creato! ID Evento: {new_ev_id}")
 
             else:
@@ -724,101 +888,195 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
                     st.warning("Nessuna azienda partner registrata: registrane una nella tab 'Registrazione Utenti'.")
                     part_id = None
 
-                part_fee = st.slider("Percentuale di Fee per FlowForest (%):", 0.0, 100.0, 20.0)
-
                 if st.button("Pianifica Evento Partner"):
-                    if part_id is None:
+                    if not part_titolo:
+                        st.error("Inserisci il titolo dell'Evento Partner.")
+                    elif part_id is None:
                         st.error("Impossibile creare l'evento senza un'azienda partner.")
+                    elif not ev_aree:
+                        st.error("Seleziona almeno un'Area.")
                     else:
-                        q_ev = "INSERT INTO EVENTO (data_inizio, data_fine, partecipanti_max, costo_biglietto, nome_area) VALUES (%s, %s, %s, %s, %s) RETURNING id_evento;"
-                        df_ev = run_query(q_ev, (ev_start, ev_end, ev_max, ev_costo, ev_area))
-                        if df_ev is not None:
-                            new_ev_id = int(df_ev.iloc[0]['id_evento'])
-                            q_part = "INSERT INTO EVENTO_PARTNER (id_evento, titolo, id_partner, fee_percentuale) VALUES (%s, %s, %s, %s);"
-                            run_query(q_part, (new_ev_id, part_titolo, part_id, part_fee))
+                        q_part = """
+                        INSERT INTO EVENTO_PARTNER (id_evento, titolo, id_partner)
+                        VALUES (%s, %s, %s);
+                        """
+                        new_ev_id = create_event_with_relations(
+                            (ev_start, ev_end, ev_max),
+                            q_part,
+                            (part_titolo, part_id),
+                            ev_aree,
+                        )
+                        if new_ev_id is not None:
                             st.success(f"Evento Partner Creato! ID Evento: {new_ev_id}")
 
         with tab_admin4:
             st.subheader("Report Finanziari e Analisi")
-            
+
             st.write("#### 1. Spesa Media Annua dei Clienti")
             q_spesa_media = """
-            SELECT C.id_cliente, C.email,
-                   COALESCE(SUM(BP.prezzo_pagato), 0) AS spesa_totale,
-                   COUNT(DISTINCT EXTRACT(YEAR FROM BP.data_emissione)) AS anni_attivi,
-                   COALESCE(SUM(BP.prezzo_pagato) / NULLIF(COUNT(DISTINCT EXTRACT(YEAR FROM BP.data_emissione)), 0), 0) AS spesa_media_annua
+            WITH spesa_per_anno AS (
+                SELECT PC.id_cliente,
+                       EXTRACT(YEAR FROM B.data_emissione)::INTEGER AS anno,
+                       SUM(B.prezzo_pagato) AS spesa_annua
+                FROM PERSONA_CLIENTE PC
+                JOIN BIGLIETTO_PERSONA B
+                  ON B.codice_fiscale = PC.codice_fiscale
+                 AND B.p_iva_azienda IS NULL
+                GROUP BY PC.id_cliente,
+                         EXTRACT(YEAR FROM B.data_emissione)::INTEGER
+            )
+            SELECT C.id_cliente, P.mail,
+                   COALESCE(AVG(S.spesa_annua), 0) AS spesa_media_annua
             FROM CLIENTE_FLOWFOREST C
-            LEFT JOIN PERSONA_CLIENTE PC ON C.id_cliente = PC.id_cliente
-            LEFT JOIN BIGLIETTO_PERSONA BP ON PC.codice_fiscale = BP.codice_fiscale AND BP.p_iva_azienda IS NULL
-            GROUP BY C.id_cliente, C.email
-            ORDER BY spesa_media_annua DESC;
+            JOIN PERSONA_CLIENTE PC ON PC.id_cliente = C.id_cliente
+            JOIN PERSONA P ON P.codice_fiscale = PC.codice_fiscale
+            LEFT JOIN spesa_per_anno S ON S.id_cliente = C.id_cliente
+            GROUP BY C.id_cliente, P.mail
+            ORDER BY spesa_media_annua DESC, C.id_cliente;
             """
             df_spesa = run_query(q_spesa_media)
             if df_spesa is not None:
-                st.dataframe(df_spesa)
-                
-            st.write("#### 2. Miglior Partner dell'Anno Solare (Fee Generate)")
+                st.dataframe(df_spesa, use_container_width=True)
+
+            st.write("#### 2. Partner per numero di Eventi organizzati")
             ricerca_anno = st.number_input("Seleziona Anno:", value=2026)
             q_best_partner = """
             SELECT AP.id_cliente, AP.nome_azienda, AP.email,
-                   SUM(E.costo_biglietto * (SELECT COUNT(*) FROM BIGLIETTO_PERSONA B WHERE B.id_evento = E.id_evento) * (EP.fee_percentuale / 100)) AS ricavi_fee_totali
+                   COUNT(E.id_evento) AS numero_eventi
             FROM AZIENDA_PARTNER AP
-            JOIN EVENTO_PARTNER EP ON AP.id_cliente = EP.id_partner
-            JOIN EVENTO E ON EP.id_evento = E.id_evento
-            WHERE EXTRACT(YEAR FROM E.data_inizio) = %s
+            LEFT JOIN EVENTO_PARTNER EP ON AP.id_cliente = EP.id_partner
+            LEFT JOIN EVENTO E
+              ON EP.id_evento = E.id_evento
+             AND EXTRACT(YEAR FROM E.data_inizio) = %s
             GROUP BY AP.id_cliente, AP.nome_azienda, AP.email
-            ORDER BY ricavi_fee_totali DESC
-            LIMIT 1;
+            ORDER BY numero_eventi DESC, AP.nome_azienda;
             """
             df_partner = run_query(q_best_partner, (ricerca_anno,))
             if df_partner is not None and not df_partner.empty:
-                st.success(f"Il miglior partner del {ricerca_anno} è **{df_partner.iloc[0]['nome_azienda']}** con ricavi da fee di **€{df_partner.iloc[0]['ricavi_fee_totali']:.2f}**")
-                st.dataframe(df_partner)
+                if int(df_partner.iloc[0]["numero_eventi"]) > 0:
+                    st.success(
+                        f"Il partner con più Eventi nel {ricerca_anno} è "
+                        f"**{df_partner.iloc[0]['nome_azienda']}**."
+                    )
+                else:
+                    st.info(f"Nessun Evento Partner registrato per il {ricerca_anno}.")
+                st.dataframe(df_partner, use_container_width=True)
             else:
-                st.info("Nessun ricavo da fee registrato per questo anno solare.")
-                
-            st.write("#### 3. Fatturato Dettagliato per Evento")
+                st.info("Nessuna Azienda Partner registrata.")
+
+            st.write("#### 3. Fatturato dei Laboratori")
             q_fatt_eventi = """
             SELECT E.id_evento,
-                   COALESCE(L.titolo, EP.titolo) AS nome_evento,
-                   CASE WHEN L.id_evento IS NOT NULL THEN 'Interno' ELSE 'Partner' END AS tipo,
+                   L.codice_lab,
+                   L.titolo,
                    COUNT(B.cod_seriale) AS biglietti_venduti,
-                   COALESCE(SUM(B.prezzo_pagato), 0) AS fatturato_lordo,
-                   CASE 
-                       WHEN EP.id_evento IS NOT NULL THEN COALESCE(SUM(B.prezzo_pagato), 0) * (EP.fee_percentuale / 100)
-                       ELSE COALESCE(SUM(B.prezzo_pagato), 0)
-                   END AS ricavo_netto_flowforest
+                   COALESCE(SUM(B.prezzo_pagato), 0) AS fatturato
             FROM EVENTO E
-            LEFT JOIN LABORATORIO L ON E.id_evento = L.id_evento
-            LEFT JOIN EVENTO_PARTNER EP ON E.id_evento = EP.id_evento
+            JOIN LABORATORIO L ON E.id_evento = L.id_evento
             LEFT JOIN BIGLIETTO_PERSONA B ON E.id_evento = B.id_evento
-            GROUP BY E.id_evento, L.titolo, EP.titolo, L.id_evento, EP.id_evento, EP.fee_percentuale
-            ORDER BY fatturato_lordo DESC;
+            WHERE EXTRACT(YEAR FROM E.data_inizio) = %s
+            GROUP BY E.id_evento, L.codice_lab, L.titolo
+            ORDER BY fatturato DESC, L.titolo;
             """
-            df_fatt = run_query(q_fatt_eventi)
+            df_fatt = run_query(q_fatt_eventi, (ricerca_anno,))
             if df_fatt is not None:
-                st.dataframe(df_fatt)
+                st.dataframe(df_fatt, use_container_width=True)
 
         with tab_admin5:
             st.subheader("Modifica Elementi Laboratorio (Area Formatore)")
-            
+
             lab_mod_id = st.number_input("ID Evento del Laboratorio da Modificare:", min_value=1)
-            
+
             if lab_mod_id:
                 # Carica i dati attuali
                 q_get_lab = "SELECT * FROM LABORATORIO WHERE id_evento = %s;"
                 df_curr = run_query(q_get_lab, (lab_mod_id,))
-                
+
                 if df_curr is not None and not df_curr.empty:
                     st.info(f"Modifica del Laboratorio: {df_curr.iloc[0]['titolo']}")
                     new_titolo = st.text_input("Nuovo Titolo:", value=df_curr.iloc[0]['titolo'])
                     new_desc = st.text_area("Nuova Descrizione:", value=df_curr.iloc[0]['descrizione'])
                     new_prot = st.text_input("Nuovo Protocollo:", value=df_curr.iloc[0]['protocollo_op'])
-                    
+                    new_costo = st.number_input(
+                        "Nuovo Costo Biglietto (€):",
+                        min_value=0.0,
+                        value=float(df_curr.iloc[0]['costo_biglietto']),
+                    )
+
+                    df_all_moduli = run_query(
+                        "SELECT id_modulo, nome FROM MODULO_DIDATTICO ORDER BY nome;"
+                    )
+                    df_moduli_correnti = run_query(
+                        """
+                        SELECT id_modulo
+                        FROM LABORATORIO_MODULO
+                        WHERE id_evento = %s;
+                        """,
+                        (lab_mod_id,),
+                    )
+
+                    mod_options = {}
+                    moduli_selezionati = []
+                    if df_all_moduli is not None and not df_all_moduli.empty:
+                        mod_options = {
+                            f"{row['nome']} (ID {row['id_modulo']})": int(row['id_modulo'])
+                            for _, row in df_all_moduli.iterrows()
+                        }
+                        current_ids = set()
+                        if df_moduli_correnti is not None:
+                            current_ids = {
+                                int(value)
+                                for value in df_moduli_correnti["id_modulo"].tolist()
+                            }
+                        default_labels = [
+                            label
+                            for label, module_id in mod_options.items()
+                            if module_id in current_ids
+                        ]
+                        selected_labels = st.multiselect(
+                            "Moduli Didattici:",
+                            list(mod_options.keys()),
+                            default=default_labels,
+                        )
+                        moduli_selezionati = [
+                            mod_options[label] for label in selected_labels
+                        ]
+                    else:
+                        st.warning("Non sono presenti Moduli Didattici associabili.")
+
                     if st.button("Salva Modifiche"):
-                        q_up = "UPDATE LABORATORIO SET titolo = %s, descrizione = %s, protocollo_op = %s WHERE id_evento = %s;"
-                        run_query(q_up, (new_titolo, new_desc, new_prot, lab_mod_id))
-                        st.success("Modifiche salvate con successo! 🌳")
+                        if not moduli_selezionati:
+                            st.error("Il Laboratorio deve prevedere almeno un Modulo Didattico.")
+                        else:
+                            statements = [
+                                (
+                                    """
+                                    UPDATE LABORATORIO
+                                    SET titolo = %s,
+                                        descrizione = %s,
+                                        protocollo_op = %s,
+                                        costo_biglietto = %s
+                                    WHERE id_evento = %s;
+                                    """,
+                                    (new_titolo, new_desc, new_prot, new_costo, lab_mod_id),
+                                ),
+                                (
+                                    "DELETE FROM LABORATORIO_MODULO WHERE id_evento = %s;",
+                                    (lab_mod_id,),
+                                ),
+                            ]
+                            for module_id in moduli_selezionati:
+                                statements.append(
+                                    (
+                                        """
+                                        INSERT INTO LABORATORIO_MODULO (id_evento, id_modulo)
+                                        VALUES (%s, %s);
+                                        """,
+                                        (lab_mod_id, module_id),
+                                    )
+                                )
+                            if run_transaction(statements):
+                                st.success("Modifiche salvate con successo! 🌳")
                 else:
                     st.warning("Nessun laboratorio interno trovato con questo ID Evento.")
 
@@ -828,13 +1086,12 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
             
             q_feedbacks = """
             SELECT F.id_feedback, F.voto, F.commento, F.data_compilazione, F.cod_seriale,
-                   COALESCE(L.titolo, EP.titolo) AS nome_evento,
+                   L.titolo AS nome_evento,
                    P.nome, P.cognome
             FROM FEEDBACK F
             JOIN BIGLIETTO_PERSONA BP ON F.cod_seriale = BP.cod_seriale
             JOIN EVENTO E ON BP.id_evento = E.id_evento
-            LEFT JOIN LABORATORIO L ON E.id_evento = L.id_evento
-            LEFT JOIN EVENTO_PARTNER EP ON E.id_evento = EP.id_evento
+            JOIN LABORATORIO L ON E.id_evento = L.id_evento
             JOIN PERSONA P ON BP.codice_fiscale = P.codice_fiscale
             ORDER BY F.data_compilazione DESC;
             """
@@ -863,6 +1120,7 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
                     "Didattica (Moduli Formativi)",
                     "Anagrafica Persone & Clienti B2C",
                     "Aziende Clienti (B2B) & Partner (B2B2C)",
+                    "Storico degli Eventi",
                     "Ordini di Acquisto & Fornitori"
                 ]
             )
@@ -872,10 +1130,16 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
             if registro_selezionato == "Organico & Staff (Dipendenti)":
                 st.write("#### Risorse Umane e Competenze Operative")
                 q_staff = """
-                SELECT RU.id_dipendente, P.nome, P.cognome, RU.iban, RU.data_assunzione, RU.ruolo AS ruolo_principale,
-                       COALESCE(F.certificazioni_attive, 'No') AS formatore,
-                       COALESCE(A.mansione, 'No') AS amministrativo,
-                       COALESCE(O.mansione, 'No') AS operaio
+                SELECT RU.id_dipendente,
+                       P.nome,
+                       P.cognome,
+                       RU.iban,
+                       RU.data_assunzione,
+                       RU.mansione,
+                       RU.livello_salariale,
+                       F.certificazioni_attive,
+                       CASE WHEN A.id_dipendente IS NOT NULL THEN 'Sì' ELSE 'No' END AS amministrativo,
+                       CASE WHEN O.id_dipendente IS NOT NULL THEN 'Sì' ELSE 'No' END AS operaio
                 FROM RISORSA_UMANA RU
                 JOIN PERSONA P ON RU.codice_fiscale = P.codice_fiscale
                 LEFT JOIN FORMATORE F ON RU.id_dipendente = F.id_dipendente
@@ -924,11 +1188,36 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
                 if df_b2b is not None:
                     st.dataframe(df_b2b, use_container_width=True)
                 
-                st.write("#### Aziende Partner B2B2C (Corsi Esterni con Fee)")
+                st.write("#### Aziende Partner B2B2C")
                 df_partners = run_query("SELECT * FROM AZIENDA_PARTNER;")
                 if df_partners is not None:
                     st.dataframe(df_partners, use_container_width=True)
-                    
+
+            elif registro_selezionato == "Storico degli Eventi":
+                st.write("#### Eventi Conclusi")
+                q_event_history = """
+                SELECT E.id_evento,
+                       COALESCE(L.titolo, EP.titolo) AS titolo,
+                       CASE
+                           WHEN L.id_evento IS NOT NULL THEN 'Laboratorio'
+                           ELSE 'Evento Partner'
+                       END AS tipologia,
+                       E.data_inizio,
+                       E.data_fine,
+                       STRING_AGG(EA.nome_area, ', ' ORDER BY EA.nome_area) AS aree
+                FROM EVENTO E
+                LEFT JOIN LABORATORIO L ON E.id_evento = L.id_evento
+                LEFT JOIN EVENTO_PARTNER EP ON E.id_evento = EP.id_evento
+                JOIN EVENTO_AREA EA ON E.id_evento = EA.id_evento
+                WHERE E.data_fine < CURRENT_TIMESTAMP
+                GROUP BY E.id_evento, L.id_evento, L.titolo, EP.titolo,
+                         E.data_inizio, E.data_fine
+                ORDER BY E.data_inizio DESC;
+                """
+                df_event_history = run_query(q_event_history)
+                if df_event_history is not None:
+                    st.dataframe(df_event_history, use_container_width=True)
+
             elif registro_selezionato == "Ordini di Acquisto & Fornitori":
                 st.write("#### Fornitori di Logistica e Catering")
                 df_prov = run_query("SELECT * FROM FORNITORE;")
