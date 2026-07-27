@@ -3,6 +3,7 @@ import pandas as pd
 import psycopg2
 import datetime
 import os
+import bcrypt
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -80,6 +81,18 @@ DB_DEFAULTS = {
     'sslmode': 'require',
 }
 
+def hash_password(password):
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verifica_password(password, password_hash):
+    try:
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+    except ValueError:
+        # Password storiche salvate in chiaro (dati pre-esistenti non ancora migrati)
+        return password == password_hash
+
+
 # Anche lo STAFF fa login "da persona": sono le persone fisiche presenti in
 # RISORSA_UMANA. Login con mail + password di PERSONA. Ogni dipendente accede
 # come 'admin' (accesso pieno). Nessun account applicativo separato.
@@ -105,7 +118,7 @@ def verifica_credenziali_staff(mail, password):
         if row is None:
             return {"found": False}
         password_reale, codice_fiscale, nome, cognome, ruolo_lavorativo = row
-        if password == password_reale:
+        if verifica_password(password, password_reale):
             return {
                 "found": True,
                 "ok": True,
@@ -146,7 +159,7 @@ def verifica_credenziali_cliente(mail, password):
         if row is None:
             return {"found": False}
         password_reale, codice_fiscale, nome, cognome = row
-        if password == password_reale:
+        if verifica_password(password, password_reale):
             return {
                 "found": True,
                 "ok": True,
@@ -565,7 +578,6 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
                 ut_password = st.text_input(
                     "Password iniziale:",
                     type="password",
-                    help="Nel prototipo viene salvata in chiaro. Utilizzare solo credenziali dimostrative.",
                 )
                 data_nascita = st.date_input(
                     "Data di Nascita:",
@@ -604,7 +616,7 @@ elif st.session_state['authenticated'] and st.session_state['db_connected']:
                             q_cliente,
                             (
                                 cf, nome, cognome, note_allergie, data_nascita,
-                                ut_tel, ut_email, ut_password, cont_emerg,
+                                ut_tel, ut_email, hash_password(ut_password), cont_emerg,
                             ),
                         )
                         if df_cliente is not None and not df_cliente.empty:
